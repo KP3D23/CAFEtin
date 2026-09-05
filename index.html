@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Gestión de Ventas y Capital</title>
+    <link rel="stylesheet" href="style.css">
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+</head>
+<body>
+
+    <!-- LOGIN -->
+    <div id="login-screen" class="login-container">
+        <h2>Acceso al Sistema</h2>
+        <input type="email" id="email" placeholder="Correo electrónico">
+        <input type="password" id="password" placeholder="Contraseña">
+        <button id="btn-login" class="btn-main">Entrar</button>
+    </div>
+
+    <!-- APLICACIÓN -->
+    <div id="app-screen" style="display: none;">
+        <header class="header">
+            <h1 id="user-greeting">Cargando...</h1>
+            <button id="btn-logout">Salir 🚪</button>
+        </header>
+
+        <!-- MENÚ DE NAVEGACIÓN (Solo visible para ADMIN) -->
+        <nav id="nav-admin" style="display: none; gap: 10px; margin-bottom: 20px; justify-content: center;">
+            <button onclick="mostrarPanel('pos')" class="btn-sec">Punto de Venta</button>
+            <button onclick="mostrarPanel('inventario')" class="btn-sec">Inventario</button>
+            <button onclick="mostrarPanel('deudores')" class="btn-sec">Deudores</button>
+            <button onclick="mostrarPanel('pastor')" class="btn-sec">Fondo Pastor</button>
+        </nav>
+
+        <!-- PANEL 1: PUNTO DE VENTA (Ventas del día) -->
+        <section id="panel-pos" class="panel" style="display: none;">
+            <div class="card">
+                <h2>Nueva Venta</h2>
+                <p style="color: #aaa;">Aquí armaremos la caja registradora...</p>
+            </div>
+        </section>
+
+        <!-- PANEL 2: INVENTARIO Y STOCK -->
+        <section id="panel-inventario" class="panel" style="display: none;">
+            <div class="card">
+                <h2>Gestión de Inventario</h2>
+                <p>Dinero en Inventario (Costo): $<span id="total-costo-inventario" style="color: #4ade80;">0.00</span></p>
+            </div>
+        </section>
+
+        <!-- PANEL 3: DEUDORES -->
+        <section id="panel-deudores" class="panel" style="display: none;">
+            <div class="card">
+                <h2>Cuentas por Cobrar</h2>
+                <p>Total en la calle: $<span id="total-deuda-calle" style="color: #f87171;">0.00</span></p>
+            </div>
+        </section>
+
+        <!-- PANEL 4: CUENTAS PASTOR -->
+        <section id="panel-pastor" class="panel" style="display: none;">
+            <div class="card" style="border-color: #facc15;">
+                <h2>Fondo Pastor (25% Ganancias)</h2>
+                <h3 style="font-size: 2rem; color: #facc15; margin: 15px 0;">$<span id="saldo-pastor">0.00</span></h3>
+                <button id="btn-abonar-pastor" class="btn-main" style="background: #facc15; color: #121212;">Abonar / Pagar</button>
+            </div>
+        </section>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>
