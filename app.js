@@ -96,7 +96,8 @@ function configurarVistasPorRol() {
     if (currentRole === 'ADMIN') {
         navAdmin.style.display = 'flex'; 
         mostrarPanel('pos');             
-        cargarInventario(); // Encendemos el inventario
+        cargarInventario();
+        cargarPOS();
     } 
     else if (currentRole === 'PASTOR') {
         mostrarPanel('pastor');          
