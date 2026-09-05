@@ -317,3 +317,73 @@ document.getElementById('btn-procesar-venta').onclick = async () => {
         alert('Error al procesar la venta: ' + error.message);
     }
 };
+// ==========================================
+// 7. MÓDULO DE DEUDORES
+// ==========================================
+async function cargarDeudores() {
+    try {
+        const { data, error } = await db.from('deudores').select('*').order('nombre');
+        if (error) throw error;
+
+        const lista = document.getElementById('lista-deudores');
+        lista.innerHTML = '';
+        let totalCalle = 0;
+
+        if (!data || data.length === 0) {
+            lista.innerHTML = '<li style="text-align:center; color:#aaa; padding: 10px;">No hay deudores registrados.</li>';
+            document.getElementById('total-deuda-calle').innerText = "0.00";
+            return;
+        }
+
+        data.forEach(d => {
+            const deudaNum = parseFloat(d.deuda_acumulada) || 0;
+            totalCalle += deudaNum;
+
+            const li = document.createElement('li');
+            li.style.cssText = "background: #2c2c2c; margin-bottom: 10px; padding: 15px; border-radius: 8px; border: 1px solid #444; display: flex; justify-content: space-between; align-items: center;";
+            
+            li.innerHTML = `
+                <div>
+                    <strong style="color: #f87171; font-size: 1.1rem;">${d.nombre}</strong><br>
+                    <span style="color: #fff; font-size: 1rem;">Deuda: <b>$${deudaNum.toFixed(2)}</b></span>
+                </div>
+                <div>
+                    <button onclick="abonarDeuda('${d.id}', '${d.nombre}', ${deudaNum})" style="background: #4ade80; color: #121212; border: none; padding: 8px 12px; border-radius: 6px; cursor: pointer; font-weight: bold;">Abonar / Pagar</button>
+                </div>
+            `;
+            lista.appendChild(li);
+        });
+
+        document.getElementById('total-deuda-calle').innerText = totalCalle.toFixed(2);
+    } catch (error) {
+        console.error('Error cargando deudores:', error);
+    }
+}
+
+window.abonarDeuda = async function(id, nombre, deudaActual) {
+    const montoStr = prompt(`¿Cuánto va a abonar o pagar ${nombre}?\n(Deuda actual: $${deudaActual.toFixed(2)})`);
+    if (!montoStr) return;
+    
+    const abono = parseFloat(montoStr);
+    if (isNaN(abono) || abono <= 0) return alert('Monto inválido.');
+    if (abono > deudaActual) return alert('El abono no puede ser mayor que la deuda total.');
+
+    const nuevaDeuda = deudaActual - abono;
+
+    try {
+        // Actualizamos la deuda restante
+        if (nuevaDeuda <= 0) {
+            // Si termina de pagar todo, podemos eliminar el registro o dejarlo en 0
+            await db.from('deudores').delete().eq('id', id);
+        } else {
+            await db.from('deudores').update({ deuda_acumulada: nuevaDeuda }).eq('id', id);
+        }
+
+        // Como al vender a crédito el sistema ya apartó la ganancia global, 
+        // aquí aseguramos que el flujo se mantenga limpio.
+        alert('✅ Abono registrado correctamente.');
+        cargarDeudores();
+    } catch (error) {
+        alert('Error al registrar abono: ' + error.message);
+    }
+};
