@@ -212,3 +212,107 @@ window.eliminarProducto = async function(id) {
     await db.from('inventario').delete().eq('id', id);
     cargarInventario();
 };
+
+// ==========================================
+// 6. MÓDULO DE PUNTO DE VENTA (POS)
+// ==========================================
+let productosPOS = [];
+
+async function cargarPOS() {
+    try {
+        const { data, error } = await db.from('inventario').select('*').order('nombre');
+        if (error) throw error;
+        
+        productosPOS = data;
+        const selectProd = document.getElementById('venta-producto');
+        selectProd.innerHTML = '<option value="">-- Selecciona un producto --</option>';
+        
+        data.forEach(prod => {
+            if (prod.stock > 0) {
+                selectProd.innerHTML += `<option value="${prod.id}">${prod.nombre} (Disp: ${prod.stock}) - $${prod.precio_venta.toFixed(2)}</option>`;
+            }
+        });
+        actualizarTotalVenta();
+    } catch (error) {
+        console.error('Error cargando POS:', error);
+    }
+}
+
+function actualizarTotalVenta() {
+    const prodId = document.getElementById('venta-producto').value;
+    const cant = parseInt(document.getElementById('venta-cantidad').value) || 0;
+    
+    if (!prodId) {
+        document.getElementById('venta-total').innerText = "0.00";
+        return;
+    }
+    
+    const producto = productosPOS.find(p => p.id === prodId);
+    if (producto) {
+        const total = producto.precio_venta * cant;
+        document.getElementById('venta-total').innerText = total.toFixed(2);
+    }
+}
+
+document.getElementById('venta-producto').addEventListener('change', actualizarTotalVenta);
+document.getElementById('venta-cantidad').addEventListener('input', actualizarTotalVenta);
+
+document.getElementById('venta-metodo').addEventListener('change', (e) => {
+    document.getElementById('caja-deudor').style.display = (e.target.value === 'CREDITO') ? 'block' : 'none';
+});
+
+document.getElementById('btn-procesar-venta').onclick = async () => {
+    const prodId = document.getElementById('venta-producto').value;
+    const cant = parseInt(document.getElementById('venta-cantidad').value);
+    const metodo = document.getElementById('venta-metodo').value;
+    const deudorNombre = document.getElementById('venta-deudor').value.trim();
+    
+    if (!prodId || cant <= 0) return alert('Selecciona un producto y cantidad válida.');
+    if (metodo === 'CREDITO' && !deudorNombre) return alert('Ingresa el nombre del deudor.');
+    
+    const producto = productosPOS.find(p => p.id === prodId);
+    if (cant > producto.stock) return alert('No hay suficiente stock disponible.');
+    
+    const totalVenta = producto.precio_venta * cant;
+    const costoTotal = producto.costo_compra * cant;
+    const gananciaNeta = totalVenta - costoTotal;
+    const porcionPastor = gananciaNeta * 0.25;
+
+    try {
+        // 1. Descontar Stock
+        await db.from('inventario').update({ stock: producto.stock - cant }).eq('id', prodId);
+        
+        // 2. Separar el 25% de la ganancia neta para el Pastor
+        if (porcionPastor > 0) {
+            const { data: fondo } = await db.from('cuenta_pastor').select('saldo_acumulado').eq('id', 1).single();
+            await db.from('cuenta_pastor').update({ saldo_acumulado: parseFloat(fondo.saldo_acumulado) + porcionPastor }).eq('id', 1);
+        }
+
+        // 3. Registrar Deuda si es a crédito
+        if (metodo === 'CREDITO') {
+            const { data: deudorExistente } = await db.from('deudores').select('id, deuda_acumulada').ilike('nombre', deudorNombre).single();
+            if (deudorExistente) {
+                await db.from('deudores').update({ deuda_acumulada: parseFloat(deudorExistente.deuda_acumulada) + totalVenta }).eq('id', deudorExistente.id);
+            } else {
+                await db.from('deudores').insert([{ nombre: deudorNombre, deuda_acumulada: totalVenta }]);
+            }
+        }
+        
+        alert('✅ Venta procesada con éxito!');
+        
+        // Resetear Formulario
+        document.getElementById('venta-producto').value = '';
+        document.getElementById('venta-cantidad').value = '1';
+        document.getElementById('venta-deudor').value = '';
+        document.getElementById('venta-total').innerText = '0.00';
+        document.getElementById('caja-deudor').style.display = 'none';
+        document.getElementById('venta-metodo').value = 'CONTADO';
+        
+        // Recargar las listas
+        cargarPOS();
+        cargarInventario(); 
+        
+    } catch (error) {
+        alert('Error al procesar la venta: ' + error.message);
+    }
+};
