@@ -69,7 +69,6 @@ async function cargarApp(user) {
     userGreeting.innerText = `Hola, ${user.email.split('@')[0]}`;
 
     try {
-        // 1. Preguntamos a Supabase qué rol tiene este ID
         const { data: roleData, error } = await db.from('roles')
             .select('rol')
             .eq('user_id', user.id)
@@ -94,29 +93,25 @@ function configurarVistasPorRol() {
     Object.values(panels).forEach(p => p.style.display = 'none');
     navAdmin.style.display = 'none';
 
-    // Encendemos solo lo que corresponde según la base de datos
     if (currentRole === 'ADMIN') {
-        navAdmin.style.display = 'flex';
-        mostrarPanel('pos');
-        cargarInventario(); // <-- Agrega esta línea nueva
+        navAdmin.style.display = 'flex'; 
+        mostrarPanel('pos');             
+        cargarInventario(); // Encendemos el inventario
     } 
     else if (currentRole === 'PASTOR') {
-        mostrarPanel('pastor');          // Lo encierra en la pantalla de Cuentas Pastor
+        mostrarPanel('pastor');          
     } 
     else if (currentRole === 'COBRADOR') {
-        mostrarPanel('deudores');        // Lo encierra en la pantalla de Deudores
+        mostrarPanel('deudores');        
     }
 }
 
-// Función global conectada a los botones del menú HTML
 window.mostrarPanel = function(panelId) {
-    // Si alguien intenta hackear el HTML para ver otra pantalla, el código lo bloquea
     if (currentRole !== 'ADMIN') {
         if (currentRole === 'PASTOR' && panelId !== 'pastor') return;
         if (currentRole === 'COBRADOR' && panelId !== 'deudores') return;
     }
 
-    // Apaga todos los paneles y enciende solo el solicitado
     Object.values(panels).forEach(p => p.style.display = 'none');
     if (panels[panelId]) {
         panels[panelId].style.display = 'block';
@@ -174,11 +169,9 @@ document.getElementById('btn-guardar-inv').onclick = async () => {
 
     try {
         if (productoEditandoId) {
-            // Si le dimos al botón editar, actualiza el ID exacto (incluso si le cambiaste el nombre)
             await db.from('inventario').update({ nombre, costo_compra: costo, precio_venta: precio, stock }).eq('id', productoEditandoId);
-            productoEditandoId = null; // Reseteamos la memoria
+            productoEditandoId = null; 
         } else {
-            // Si es un producto nuevo escrito a mano, busca si ya existe por si acaso
             const { data: existente } = await db.from('inventario').select('id').ilike('nombre', nombre).single();
             if (existente) {
                 await db.from('inventario').update({ costo_compra: costo, precio_venta: precio, stock }).eq('id', existente.id);
@@ -187,7 +180,6 @@ document.getElementById('btn-guardar-inv').onclick = async () => {
             }
         }
         
-        // Limpiamos las casillas y regresamos el botón a su estado normal
         document.getElementById('inv-nombre').value = '';
         document.getElementById('inv-costo').value = '';
         document.getElementById('inv-precio').value = '';
@@ -204,13 +196,12 @@ document.getElementById('btn-guardar-inv').onclick = async () => {
 };
 
 window.editarProducto = function(id, nombre, costo, precio, stock) {
-    productoEditandoId = id; // Guardamos el ID en memoria
+    productoEditandoId = id; 
     document.getElementById('inv-nombre').value = nombre;
     document.getElementById('inv-costo').value = costo;
     document.getElementById('inv-precio').value = precio;
     document.getElementById('inv-stock').value = stock;
     
-    // Cambiamos el color y texto del botón para que sepas que estás editando
     const btn = document.getElementById('btn-guardar-inv');
     btn.innerText = "Actualizar Producto";
     btn.style.background = "#facc15"; 
