@@ -44,7 +44,23 @@
         <section id="panel-inventario" class="panel" style="display: none;">
             <div class="card">
                 <h2>Gestión de Inventario</h2>
-                <p>Dinero en Inventario (Costo): $<span id="total-costo-inventario" style="color: #4ade80;">0.00</span></p>
+                <p>Dinero Invertido (Costo): $<span id="total-costo-inventario" style="color: #4ade80; font-weight: bold;">0.00</span></p>
+            </div>
+            
+            <div class="card" style="text-align: left;">
+                <h3 style="margin-bottom: 15px;">Agregar / Actualizar Producto</h3>
+                <input type="text" id="inv-nombre" placeholder="Nombre (Ej: Malta)" style="width: 100%; margin-bottom: 10px;">
+                <div style="display: flex; gap: 10px; margin-bottom: 10px;">
+                    <input type="number" id="inv-costo" placeholder="Costo ($)" step="0.01" style="flex: 1;">
+                    <input type="number" id="inv-precio" placeholder="Precio ($)" step="0.01" style="flex: 1;">
+                    <input type="number" id="inv-stock" placeholder="Cantidad" style="flex: 1;">
+                </div>
+                <button id="btn-guardar-inv" class="btn-main">Guardar Producto</button>
+            </div>
+
+            <div class="card" style="text-align: left;">
+                <h3 style="margin-bottom: 15px;">Stock Actual</h3>
+                <ul id="lista-inventario" style="list-style: none; padding: 0;"></ul>
             </div>
         </section>
 
