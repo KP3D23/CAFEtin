@@ -121,3 +121,75 @@ window.mostrarPanel = function(panelId) {
         panels[panelId].style.display = 'block';
     }
 };
+
+// ==========================================
+// 5. MÓDULO DE INVENTARIO
+// ==========================================
+async function cargarInventario() {
+    try {
+        const { data, error } = await db.from('inventario').select('*').order('nombre');
+        if (error) throw error;
+
+        const lista = document.getElementById('lista-inventario');
+        lista.innerHTML = '';
+        let totalInvertido = 0;
+
+        data.forEach(prod => {
+            // Multiplica costo por cantidad para saber cuánto dinero tienes invertido
+            totalInvertido += (prod.costo_compra * prod.stock);
+            
+            const li = document.createElement('li');
+            li.style.cssText = "background: #2c2c2c; margin-bottom: 10px; padding: 15px; border-radius: 8px; border: 1px solid #444; display: flex; justify-content: space-between; align-items: center;";
+            li.innerHTML = `
+                <div>
+                    <strong style="color: #4db8ff; font-size: 1.1rem;">${prod.nombre}</strong> <span style="font-size: 0.9rem; color: #aaa;">(Stock: ${prod.stock})</span><br>
+                    <small style="color: #fff;">Costo: $${prod.costo_compra.toFixed(2)} | Venta: $${prod.precio_venta.toFixed(2)}</small>
+                </div>
+                <button onclick="eliminarProducto('${prod.id}')" style="background: #f87171; color: #121212; border: none; padding: 8px 12px; border-radius: 6px; cursor: pointer; font-weight: bold;">X</button>
+            `;
+            lista.appendChild(li);
+        });
+
+        document.getElementById('total-costo-inventario').innerText = totalInvertido.toFixed(2);
+    } catch (error) {
+        console.error('Error cargando inventario:', error);
+    }
+}
+
+document.getElementById('btn-guardar-inv').onclick = async () => {
+    const nombre = document.getElementById('inv-nombre').value.trim();
+    const costo = parseFloat(document.getElementById('inv-costo').value);
+    const precio = parseFloat(document.getElementById('inv-precio').value);
+    const stock = parseInt(document.getElementById('inv-stock').value);
+
+    if (!nombre || isNaN(costo) || isNaN(precio) || isNaN(stock)) {
+        return alert('Por favor, llena todos los campos con números válidos.');
+    }
+
+    try {
+        // Busca si el producto ya existe para actualizarlo en vez de duplicarlo
+        const { data: existente } = await db.from('inventario').select('id').ilike('nombre', nombre).single();
+        
+        if (existente) {
+            await db.from('inventario').update({ costo_compra: costo, precio_venta: precio, stock: stock }).eq('id', existente.id);
+        } else {
+            await db.from('inventario').insert([{ nombre, costo_compra: costo, precio_venta: precio, stock }]);
+        }
+        
+        // Limpia las casillas
+        document.getElementById('inv-nombre').value = '';
+        document.getElementById('inv-costo').value = '';
+        document.getElementById('inv-precio').value = '';
+        document.getElementById('inv-stock').value = '';
+        
+        cargarInventario();
+    } catch (error) {
+        alert('Error al guardar producto: ' + error.message);
+    }
+};
+
+window.eliminarProducto = async function(id) {
+    if(!confirm('¿Seguro que deseas eliminar este producto del inventario?')) return;
+    await db.from('inventario').delete().eq('id', id);
+    cargarInventario();
+};
