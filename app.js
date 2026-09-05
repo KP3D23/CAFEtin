@@ -387,3 +387,40 @@ window.abonarDeuda = async function(id, nombre, deudaActual) {
         alert('Error al registrar abono: ' + error.message);
     }
 };
+// ==========================================
+// 8. MÓDULO DE CUENTAS PASTOR
+// ==========================================
+async function cargarPastor() {
+    try {
+        const { data, error } = await db.from('cuenta_pastor').select('saldo_acumulado').eq('id', 1).single();
+        if (error) throw error;
+
+        const saldo = data ? parseFloat(data.saldo_acumulado) : 0;
+        document.getElementById('saldo-pastor').innerText = saldo.toFixed(2);
+    } catch (error) {
+        console.error('Error cargando cuenta pastor:', error);
+    }
+}
+
+document.getElementById('btn-abonar-pastor').onclick = async () => {
+    try {
+        const { data } = await db.from('cuenta_pastor').select('saldo_acumulado').eq('id', 1).single();
+        const saldoActual = data ? parseFloat(data.saldo_acumulado) : 0;
+
+        const montoStr = prompt(`¿Cuánto se le va a entregar o abonar al Pastor?\n(Saldo acumulado actual: $${saldoActual.toFixed(2)})`);
+        if (!montoStr) return;
+
+        const pago = parseFloat(montoStr);
+        if (isNaN(pago) || pago <= 0) return alert('Monto inválido.');
+        if (pago > saldoActual) return alert('No puedes pagar más de lo acumulado.');
+
+        const nuevoSaldo = saldoActual - pago;
+
+        await db.from('cuenta_pastor').update({ saldo_acumulado: nuevoSaldo }).eq('id', 1);
+
+        alert('✅ Liquidación registrada con éxito.');
+        cargarPastor();
+    } catch (error) {
+        alert('Error al procesar la liquidación: ' + error.message);
+    }
+};
