@@ -96,8 +96,9 @@ function configurarVistasPorRol() {
 
     // Encendemos solo lo que corresponde según la base de datos
     if (currentRole === 'ADMIN') {
-        navAdmin.style.display = 'flex'; // Habilita la barra de navegación
-        mostrarPanel('pos');             // Lo manda a la Venta del Día
+        navAdmin.style.display = 'flex';
+        mostrarPanel('pos');
+        cargarInventario(); // <-- Agrega esta línea nueva
     } 
     else if (currentRole === 'PASTOR') {
         mostrarPanel('pastor');          // Lo encierra en la pantalla de Cuentas Pastor
