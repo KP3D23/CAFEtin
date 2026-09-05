@@ -89,21 +89,24 @@ async function cargarApp(user) {
 }
 
 function configurarVistasPorRol() {
-    // Apagamos todo por defecto por seguridad
     Object.values(panels).forEach(p => p.style.display = 'none');
     navAdmin.style.display = 'none';
 
     if (currentRole === 'ADMIN') {
         navAdmin.style.display = 'flex'; 
         mostrarPanel('pos');             
-        cargarInventario();
+        cargarInventario(); 
         cargarPOS();
+        cargarDeudores();
+        cargarPastor();
     } 
     else if (currentRole === 'PASTOR') {
         mostrarPanel('pastor');          
+        cargarPastor(); // Carga exclusiva para el pastor
     } 
     else if (currentRole === 'COBRADOR') {
         mostrarPanel('deudores');        
+        cargarDeudores(); // Carga exclusiva para el cobrador
     }
 }
 
