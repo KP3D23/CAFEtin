@@ -126,6 +126,8 @@ window.mostrarPanel = function(panelId) {
 // ==========================================
 // 5. MÓDULO DE INVENTARIO
 // ==========================================
+let productoEditandoId = null; // Variable para saber qué producto estamos modificando
+
 async function cargarInventario() {
     try {
         const { data, error } = await db.from('inventario').select('*').order('nombre');
@@ -136,17 +138,20 @@ async function cargarInventario() {
         let totalInvertido = 0;
 
         data.forEach(prod => {
-            // Multiplica costo por cantidad para saber cuánto dinero tienes invertido
             totalInvertido += (prod.costo_compra * prod.stock);
             
             const li = document.createElement('li');
             li.style.cssText = "background: #2c2c2c; margin-bottom: 10px; padding: 15px; border-radius: 8px; border: 1px solid #444; display: flex; justify-content: space-between; align-items: center;";
+            
             li.innerHTML = `
                 <div>
                     <strong style="color: #4db8ff; font-size: 1.1rem;">${prod.nombre}</strong> <span style="font-size: 0.9rem; color: #aaa;">(Stock: ${prod.stock})</span><br>
                     <small style="color: #fff;">Costo: $${prod.costo_compra.toFixed(2)} | Venta: $${prod.precio_venta.toFixed(2)}</small>
                 </div>
-                <button onclick="eliminarProducto('${prod.id}')" style="background: #f87171; color: #121212; border: none; padding: 8px 12px; border-radius: 6px; cursor: pointer; font-weight: bold;">X</button>
+                <div style="display: flex; gap: 5px;">
+                    <button onclick="editarProducto('${prod.id}', '${prod.nombre}', ${prod.costo_compra}, ${prod.precio_venta}, ${prod.stock})" style="background: #333; color: white; border: 1px solid #444; padding: 8px 12px; border-radius: 6px; cursor: pointer; font-weight: bold;">✏️</button>
+                    <button onclick="eliminarProducto('${prod.id}')" style="background: #f87171; color: #121212; border: none; padding: 8px 12px; border-radius: 6px; cursor: pointer; font-weight: bold;">X</button>
+                </div>
             `;
             lista.appendChild(li);
         });
@@ -164,29 +169,51 @@ document.getElementById('btn-guardar-inv').onclick = async () => {
     const stock = parseInt(document.getElementById('inv-stock').value);
 
     if (!nombre || isNaN(costo) || isNaN(precio) || isNaN(stock)) {
-        return alert('Por favor, llena todos los campos con números válidos.');
+        return alert('Por favor, llena todos los campos numéricos.');
     }
 
     try {
-        // Busca si el producto ya existe para actualizarlo en vez de duplicarlo
-        const { data: existente } = await db.from('inventario').select('id').ilike('nombre', nombre).single();
-        
-        if (existente) {
-            await db.from('inventario').update({ costo_compra: costo, precio_venta: precio, stock: stock }).eq('id', existente.id);
+        if (productoEditandoId) {
+            // Si le dimos al botón editar, actualiza el ID exacto (incluso si le cambiaste el nombre)
+            await db.from('inventario').update({ nombre, costo_compra: costo, precio_venta: precio, stock }).eq('id', productoEditandoId);
+            productoEditandoId = null; // Reseteamos la memoria
         } else {
-            await db.from('inventario').insert([{ nombre, costo_compra: costo, precio_venta: precio, stock }]);
+            // Si es un producto nuevo escrito a mano, busca si ya existe por si acaso
+            const { data: existente } = await db.from('inventario').select('id').ilike('nombre', nombre).single();
+            if (existente) {
+                await db.from('inventario').update({ costo_compra: costo, precio_venta: precio, stock }).eq('id', existente.id);
+            } else {
+                await db.from('inventario').insert([{ nombre, costo_compra: costo, precio_venta: precio, stock }]);
+            }
         }
         
-        // Limpia las casillas
+        // Limpiamos las casillas y regresamos el botón a su estado normal
         document.getElementById('inv-nombre').value = '';
         document.getElementById('inv-costo').value = '';
         document.getElementById('inv-precio').value = '';
         document.getElementById('inv-stock').value = '';
         
+        const btn = document.getElementById('btn-guardar-inv');
+        btn.innerText = "Guardar Producto";
+        btn.style.background = "#4db8ff";
+        
         cargarInventario();
     } catch (error) {
         alert('Error al guardar producto: ' + error.message);
     }
+};
+
+window.editarProducto = function(id, nombre, costo, precio, stock) {
+    productoEditandoId = id; // Guardamos el ID en memoria
+    document.getElementById('inv-nombre').value = nombre;
+    document.getElementById('inv-costo').value = costo;
+    document.getElementById('inv-precio').value = precio;
+    document.getElementById('inv-stock').value = stock;
+    
+    // Cambiamos el color y texto del botón para que sepas que estás editando
+    const btn = document.getElementById('btn-guardar-inv');
+    btn.innerText = "Actualizar Producto";
+    btn.style.background = "#facc15"; 
 };
 
 window.eliminarProducto = async function(id) {
