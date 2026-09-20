@@ -7,7 +7,6 @@
     <link rel="stylesheet" href="style.css">
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <style>
-        /* Estilos para Ventanas Emergentes (Modales) */
         .modal-bg { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.8); z-index: 1000; justify-content: center; align-items: center; }
         .modal-content { background: #1a1a1a; padding: 25px; border-radius: 10px; border: 1px solid #444; width: 90%; max-width: 400px; color: white; }
         .modal-content input, .modal-content select { width: 100%; padding: 10px; margin-bottom: 15px; background: #2c2c2c; color: white; border: 1px solid #444; border-radius: 5px; outline: none; }
@@ -31,15 +30,17 @@
             <button id="btn-logout">Salir 🚪</button>
         </header>
 
+        <!-- MENÚ DE NAVEGACIÓN -->
         <nav id="nav-admin" style="display: none; gap: 10px; margin-bottom: 20px; justify-content: center; flex-wrap: wrap;">
             <button onclick="mostrarPanel('dashboard')" class="btn-sec" style="background: #4db8ff; color: #121212;">Dashboard</button>
             <button onclick="mostrarPanel('pos')" class="btn-sec">Punto de Venta</button>
             <button onclick="mostrarPanel('inventario')" class="btn-sec">Inventario</button>
             <button onclick="mostrarPanel('deudores')" class="btn-sec">Deudores</button>
             <button onclick="mostrarPanel('pastor')" class="btn-sec">Fondo Pastor</button>
+            <button onclick="mostrarPanel('historial')" class="btn-sec" style="background: #facc15; color: #121212;">Historial</button>
         </nav>
 
-        <!-- PANEL 0: DASHBOARD PRINCIPAL -->
+        <!-- PANEL 0: DASHBOARD -->
         <section id="panel-dashboard" class="panel" style="display: none;">
             <div class="card" style="border-color: #4ade80; margin-bottom: 20px;">
                 <h2 style="color: #4ade80;">CAPITAL TOTAL (Caja + Calle)</h2>
@@ -75,24 +76,17 @@
         <section id="panel-pos" class="panel" style="display: none;">
             <div class="card" style="text-align: left;">
                 <h2 style="margin-bottom: 15px; color: #4db8ff;">Nueva Venta</h2>
-                
-                <label>Producto</label>
-                <select id="venta-producto"></select>
-                
-                <label>Cantidad</label>
-                <input type="number" id="venta-cantidad" value="1" min="1">
-                
+                <label>Producto</label><select id="venta-producto"></select>
+                <label>Cantidad</label><input type="number" id="venta-cantidad" value="1" min="1">
                 <div style="background: #181818; padding: 15px; border-radius: 8px; border: 1px solid #333; margin-bottom: 15px; text-align: center;">
                     <span style="color: #aaa;">Total a Pagar:</span><br>
                     <span style="font-size: 2rem; font-weight: bold; color: #4ade80;">$<span id="venta-total">0.00</span></span>
                 </div>
-
                 <label>Método de Venta</label>
                 <select id="venta-metodo">
                     <option value="CONTADO">Al Contado (Ingresa a Caja)</option>
                     <option value="CREDITO">A Crédito (Va a Deudores)</option>
                 </select>
-
                 <div id="caja-bolsillo" style="display: block;">
                     <label>¿A dónde entra el dinero?</label>
                     <select id="venta-bolsillo">
@@ -101,12 +95,9 @@
                         <option value="USDT">USDT</option>
                     </select>
                 </div>
-
                 <div id="caja-deudor" style="display: none;">
-                    <label>Nombre del Deudor</label>
-                    <input type="text" id="venta-deudor" placeholder="Ej: Marianela">
+                    <label>Nombre del Deudor</label><input type="text" id="venta-deudor" placeholder="Ej: Marianela">
                 </div>
-
                 <button id="btn-procesar-venta" class="btn-main">Procesar Venta</button>
             </div>
         </section>
@@ -115,12 +106,11 @@
         <section id="panel-inventario" class="panel" style="display: none;">
             <div class="card" style="text-align: left;">
                 <h3 style="margin-bottom: 15px;">Agregar / Actualizar Producto</h3>
-                <label>Nombre del Producto</label>
-                <input type="text" id="inv-nombre">
+                <label>Nombre del Producto</label><input type="text" id="inv-nombre">
                 <div style="display: flex; gap: 10px; margin-bottom: 15px;">
                     <div style="flex: 1;"><label>Costo ($)</label><input type="number" id="inv-costo" step="0.01"></div>
-                    <div style="flex: 1;"><label>Precio Venta ($)</label><input type="number" id="inv-precio" step="0.01"></div>
-                    <div style="flex: 1;"><label>Cantidad</label><input type="number" id="inv-stock"></div>
+                    <div style="flex: 1;"><label>Precio ($)</label><input type="number" id="inv-precio" step="0.01"></div>
+                    <div style="flex: 1;"><label>Stock</label><input type="number" id="inv-stock"></div>
                 </div>
                 <button id="btn-guardar-inv" class="btn-main">Guardar Producto</button>
             </div>
@@ -143,26 +133,32 @@
             <div class="card" style="border-color: #facc15; margin-bottom: 20px;">
                 <h2>Fondo Pastor (Por Entregar)</h2>
                 <h3 style="font-size: 2.5rem; color: #facc15; margin: 15px 0;">$<span id="saldo-pastor">0.00</span></h3>
-                
                 <div style="display: flex; gap: 10px;">
                     <button onclick="cerrarSemana()" style="flex:1; background: #4db8ff; color: #121212; border: none; padding: 12px; border-radius: 6px; font-weight: bold; cursor: pointer;">Cerrar Semana y Calcular 25%</button>
                     <button onclick="abrirModalLiquidacion()" style="flex:1; background: #facc15; color: #121212; border: none; padding: 12px; border-radius: 6px; font-weight: bold; cursor: pointer;">Registrar Abono/Liquidación</button>
                 </div>
             </div>
-
             <div class="card" style="text-align: left;">
                 <h3 style="margin-bottom: 15px; color: #4db8ff;">Historial de Cierres Semanales</h3>
                 <ul id="lista-cierres-pastor" style="list-style: none; padding: 0;"></ul>
             </div>
-            
             <div class="card" style="text-align: left;">
-                <h3 style="margin-bottom: 15px; color: #f87171;">Historial de Liquidaciones (Egresos)</h3>
+                <h3 style="margin-bottom: 15px; color: #f87171;">Historial de Liquidaciones</h3>
                 <ul id="lista-historial-pastor" style="list-style: none; padding: 0;"></ul>
+            </div>
+        </section>
+
+        <!-- PANEL 5: HISTORIAL GENERAL -->
+        <section id="panel-historial" class="panel" style="display: none;">
+            <div class="card" style="text-align: left; border-color: #facc15;">
+                <h2 style="color: #facc15; margin-bottom: 10px;">Libro Mayor de Registros</h2>
+                <p style="color: #aaa; font-size: 0.9rem; margin-bottom: 20px;">Registro general de abonos de deudores y salidas/egresos de la caja.</p>
+                <ul id="lista-historial-general" style="list-style: none; padding: 0;"></ul>
             </div>
         </section>
     </div>
 
-    <!-- MODAL: EGRESO CAJA -->
+    <!-- MODALES -->
     <div id="modal-egreso" class="modal-bg">
         <div class="modal-content">
             <h3 style="color: #f87171; margin-bottom: 15px;">Sacar Dinero de Caja</h3>
@@ -183,7 +179,6 @@
         </div>
     </div>
 
-    <!-- MODAL: ABONO DEUDOR -->
     <div id="modal-abono" class="modal-bg">
         <div class="modal-content">
             <h3 style="color: #4ade80; margin-bottom: 15px;">Abonar Deuda - <span id="abono-nombre-lbl"></span></h3>
@@ -212,18 +207,8 @@
         </div>
     </div>
 
-    <!-- MODAL: VER HISTORIAL DEUDOR -->
-    <div id="modal-historial-deudor" class="modal-bg">
-        <div class="modal-content" style="max-height: 80vh; overflow-y: auto;">
-            <h3 style="color: #4db8ff; margin-bottom: 15px;">Historial: <span id="historial-nombre-lbl"></span></h3>
-            <div id="historial-deudor-lista"></div>
-            <button onclick="cerrarModal('modal-historial-deudor')" class="btn-cancel" style="width: 100%; margin-top: 15px;">Cerrar</button>
-        </div>
-    </div>
-
-    <script src="app.js?v=15"></script>
+    <script src="app.js?v=17"></script>
     <script>
-        // Scripts visuales para los campos del modal
         document.getElementById('abono-metodo').addEventListener('change', function(e) {
             document.getElementById('abono-banco-campos').style.display = (e.target.value === 'BANCO') ? 'block' : 'none';
             document.getElementById('abono-efectivo-campos').style.display = (e.target.value === 'EFECTIVO') ? 'block' : 'none';
