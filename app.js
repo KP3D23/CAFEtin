@@ -225,59 +225,137 @@ window.editarProducto = (id, nombre, costo, precio, stock) => {
 };
 
 // ==========================================
-// 6. POS (VENTAS)
+// 6. POS (CARRITO DE COMPRAS)
 // ==========================================
 let productosPOS = [];
+let carrito = [];
+
 async function cargarPOS() {
     const { data } = await db.from('inventario').select('*').order('nombre');
     productosPOS = data;
     const sel = document.getElementById('venta-producto');
-    sel.innerHTML = '<option value="">-- Selecciona --</option>';
+    sel.innerHTML = '<option value="">-- Selecciona un producto --</option>';
     data.forEach(p => { if (p.stock > 0) sel.innerHTML += `<option value="${p.id}">${p.nombre} (Disp: ${p.stock}) - $${p.precio_venta}</option>`; });
 }
 
-function actualizarTotalVenta() {
+window.agregarAlCarrito = () => {
     const pId = document.getElementById('venta-producto').value;
     const cant = parseInt(document.getElementById('venta-cantidad').value) || 0;
+    
+    if (!pId || cant <= 0) return alert('Selecciona un producto y cantidad válida.');
+    
     const prod = productosPOS.find(p => p.id === pId);
-    document.getElementById('venta-total').innerText = prod ? (prod.precio_venta * cant).toFixed(2) : "0.00";
+    const enCarrito = carrito.find(item => item.id === pId);
+    const cantEnCarrito = enCarrito ? enCarrito.cantidad : 0;
+    
+    if (cant + cantEnCarrito > prod.stock) return alert(`Stock insuficiente. Solo tienes ${prod.stock} en total.`);
+
+    if (enCarrito) {
+        enCarrito.cantidad += cant;
+    } else {
+        carrito.push({
+            id: prod.id,
+            nombre: prod.nombre,
+            precio: prod.precio_venta,
+            costo: prod.costo_compra,
+            stock: prod.stock,
+            cantidad: cant
+        });
+    }
+    
+    document.getElementById('venta-producto').value = '';
+    document.getElementById('venta-cantidad').value = '1';
+    actualizarCarrito();
+};
+
+window.eliminarDelCarrito = (index) => {
+    carrito.splice(index, 1);
+    actualizarCarrito();
+};
+
+function actualizarCarrito() {
+    const lista = document.getElementById('lista-carrito');
+    const totalEl = document.getElementById('venta-total');
+    
+    if (carrito.length === 0) {
+        lista.innerHTML = '<li style="color: #666; text-align: center;">El carrito está vacío</li>';
+        totalEl.innerText = '0.00';
+        return;
+    }
+
+    lista.innerHTML = '';
+    let total = 0;
+    
+    carrito.forEach((item, index) => {
+        const subtotal = item.precio * item.cantidad;
+        total += subtotal;
+        lista.innerHTML += `
+            <li style="display: flex; justify-content: space-between; margin-bottom: 8px; border-bottom: 1px solid #2c2c2c; padding-bottom: 5px;">
+                <div><span style="color:#4db8ff;">${item.nombre}</span> x${item.cantidad}</div>
+                <div style="display:flex; gap:10px;">
+                    <span>$${subtotal.toFixed(2)}</span>
+                    <button onclick="eliminarDelCarrito(${index})" style="background:none; border:none; color:#f87171; cursor:pointer; font-weight:bold;">X</button>
+                </div>
+            </li>
+        `;
+    });
+    
+    totalEl.innerText = total.toFixed(2);
 }
-document.getElementById('venta-producto').addEventListener('change', actualizarTotalVenta);
-document.getElementById('venta-cantidad').addEventListener('input', actualizarTotalVenta);
 
 document.getElementById('btn-procesar-venta').onclick = async () => {
-    const prodId = document.getElementById('venta-producto').value;
-    const cant = parseInt(document.getElementById('venta-cantidad').value);
+    if (carrito.length === 0) return alert('El carrito está vacío.');
+
     const metodo = document.getElementById('venta-metodo').value;
     const bolsillo = document.getElementById('venta-bolsillo').value;
     const deudorNombre = document.getElementById('venta-deudor').value.trim();
     
-    if (!prodId || cant <= 0) return alert('Selección inválida');
-    const prod = productosPOS.find(p => p.id === prodId);
-    if (cant > prod.stock) return alert('No hay stock');
+    if (metodo === 'CREDITO' && !deudorNombre) return alert('Ingresa el nombre del deudor.');
 
-    const total = prod.precio_venta * cant;
-    const ganancia = total - (prod.costo_compra * cant);
+    let ventaTotal = 0;
+    let ventasData = [];
 
     try {
-        await db.from('inventario').update({ stock: prod.stock - cant }).eq('id', prodId);
-        await db.from('ventas_registro').insert([{ producto: prod.nombre, ganancia_neta: ganancia }]);
+        for (let item of carrito) {
+            const subtotal = item.precio * item.cantidad;
+            const costoTotalItem = item.costo * item.cantidad;
+            const gananciaItem = subtotal - costoTotalItem;
+            
+            ventaTotal += subtotal;
+            
+            // Extraer stock actual por si fue modificado en otra pantalla simultáneamente
+            const { data: stockActual } = await db.from('inventario').select('stock').eq('id', item.id).single();
+            if(stockActual) {
+                 await db.from('inventario').update({ stock: stockActual.stock - item.cantidad }).eq('id', item.id);
+            }
+            
+            ventasData.push({ producto: `${item.cantidad}x ${item.nombre}`, ganancia_neta: gananciaItem });
+        }
+
+        // Insertar registro masivo para el cierre de semana del pastor
+        await db.from('ventas_registro').insert(ventasData);
 
         if (metodo === 'CONTADO') {
             const { data: caja } = await db.from('caja_principal').select('*').eq('id', 1).single();
-            await db.from('caja_principal').update({ [bolsillo.toLowerCase()]: parseFloat(caja[bolsillo.toLowerCase()]) + total }).eq('id', 1);
+            await db.from('caja_principal').update({ [bolsillo.toLowerCase()]: parseFloat(caja[bolsillo.toLowerCase()]) + ventaTotal }).eq('id', 1);
         } else {
-            if(!deudorNombre) return alert('Nombre deudor obligatorio');
             const { data: dExistente } = await db.from('deudores').select('id, deuda_acumulada').ilike('nombre', deudorNombre).single();
-            if (dExistente) await db.from('deudores').update({ deuda_acumulada: parseFloat(dExistente.deuda_acumulada) + total }).eq('id', dExistente.id);
-            else await db.from('deudores').insert([{ nombre: deudorNombre, deuda_acumulada: total }]);
+            if (dExistente) {
+                await db.from('deudores').update({ deuda_acumulada: parseFloat(dExistente.deuda_acumulada) + ventaTotal }).eq('id', dExistente.id);
+            } else {
+                await db.from('deudores').insert([{ nombre: deudorNombre, deuda_acumulada: ventaTotal }]);
+            }
         }
 
-        alert('✅ Venta procesada');
-        document.getElementById('venta-cantidad').value = '1';
+        alert('✅ Venta procesada con éxito');
+        
+        carrito = [];
+        actualizarCarrito();
         document.getElementById('venta-deudor').value = '';
         cargarTodo();
-    } catch (e) { alert(e.message); }
+    } catch (e) { 
+        alert('Error al procesar la venta: ' + e.message); 
+    }
 };
 
 // ==========================================
