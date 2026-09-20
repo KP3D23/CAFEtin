@@ -15,7 +15,8 @@ const panels = {
     pos: document.getElementById('panel-pos'),
     inventario: document.getElementById('panel-inventario'),
     deudores: document.getElementById('panel-deudores'),
-    pastor: document.getElementById('panel-pastor')
+    pastor: document.getElementById('panel-pastor'),
+    historial: document.getElementById('panel-historial')
 };
 
 let currentUser = null;
@@ -73,11 +74,12 @@ function configurarVistasPorRol() {
         cargarTodo();
     } 
     else if (currentRole === 'PASTOR') {
-        mostrarPanel('dashboard'); // Pastor también ve Dashboard y su panel
-        navAdmin.style.display = 'flex'; // Le mostramos menú simplificado
+        mostrarPanel('dashboard'); 
+        navAdmin.style.display = 'flex'; 
         navAdmin.innerHTML = `
             <button onclick="mostrarPanel('dashboard')" class="btn-sec">Dashboard</button>
             <button onclick="mostrarPanel('pastor')" class="btn-sec">Fondo Pastor</button>
+            <button onclick="mostrarPanel('historial')" class="btn-sec">Historial</button>
         `;
         cargarTodo();
     } 
@@ -98,6 +100,7 @@ function cargarTodo() {
     cargarPOS();
     cargarDeudores();
     cargarPastor();
+    cargarHistorialGeneral();
 }
 
 // ==========================================
@@ -107,15 +110,14 @@ window.abrirModal = id => document.getElementById(id).style.display = 'flex';
 window.cerrarModal = id => {
     document.getElementById(id).style.display = 'none';
     const inputs = document.getElementById(id).querySelectorAll('input');
-    inputs.forEach(input => input.value = ''); // Limpiar campos
+    inputs.forEach(input => input.value = '');
 };
 
 // ==========================================
-// 4. DASHBOARD (CAJA, CAPITAL Y EGRESOS)
+// 4. DASHBOARD (CAJA Y EGRESOS)
 // ==========================================
 async function cargarDashboard() {
     try {
-        // Cargar Caja
         const { data: caja } = await db.from('caja_principal').select('*').eq('id', 1).single();
         const banco = parseFloat(caja.banco) || 0;
         const usdt = parseFloat(caja.usdt) || 0;
@@ -127,15 +129,13 @@ async function cargarDashboard() {
         document.getElementById('dash-efectivo').innerText = efectivo.toFixed(2);
         document.getElementById('dash-caja').innerText = totalCaja.toFixed(2);
 
-        // Cargar Deudores
         const { data: deudores } = await db.from('deudores').select('deuda_acumulada');
         let totalCalle = 0;
         if(deudores) deudores.forEach(d => totalCalle += parseFloat(d.deuda_acumulada));
         document.getElementById('dash-calle').innerText = totalCalle.toFixed(2);
 
-        // Capital Total
         document.getElementById('dash-capital').innerText = (totalCaja + totalCalle).toFixed(2);
-    } catch (e) { console.error('Error cargando dashboard', e); }
+    } catch (e) {}
 }
 
 window.abrirModalEgreso = () => abrirModal('modal-egreso');
@@ -143,7 +143,7 @@ window.abrirModalEgreso = () => abrirModal('modal-egreso');
 window.procesarEgreso = async () => {
     const concepto = document.getElementById('egreso-concepto').value.trim();
     const monto = parseFloat(document.getElementById('egreso-monto').value);
-    const bolsillo = document.getElementById('egreso-bolsillo').value; // BANCO, EFECTIVO, USDT
+    const bolsillo = document.getElementById('egreso-bolsillo').value;
 
     if (!concepto || isNaN(monto) || monto <= 0) return alert('Datos inválidos');
 
@@ -153,10 +153,8 @@ window.procesarEgreso = async () => {
         
         if (monto > saldoBolsillo) return alert(`No hay suficiente dinero en ${bolsillo}`);
 
-        // Restar de la caja
         await db.from('caja_principal').update({ [bolsillo.toLowerCase()]: saldoBolsillo - monto }).eq('id', 1);
         
-        // Registrar movimiento
         await db.from('movimientos_caja').insert([{
             tipo: 'EGRESO', monto, bolsillo, concepto, usuario: currentUser.email
         }]);
@@ -164,6 +162,7 @@ window.procesarEgreso = async () => {
         alert('✅ Egreso registrado.');
         cerrarModal('modal-egreso');
         cargarDashboard();
+        cargarHistorialGeneral();
     } catch (e) { alert('Error: ' + e.message); }
 };
 
@@ -190,7 +189,6 @@ async function cargarInventario() {
                 </li>`;
         });
         document.getElementById('dash-inv').innerText = totalInv.toFixed(2);
-        document.getElementById('total-costo-inventario').innerText = totalInv.toFixed(2);
     } catch (e) {}
 }
 
@@ -213,7 +211,7 @@ document.getElementById('btn-guardar-inv').onclick = async () => {
         }
         document.querySelectorAll('#panel-inventario input').forEach(i => i.value = '');
         document.getElementById('btn-guardar-inv').innerText = "Guardar";
-        cargarInventario(); cargarDashboard(); cargarPOS();
+        cargarTodo();
     } catch (e) { alert(e.message); }
 };
 
@@ -227,7 +225,7 @@ window.editarProducto = (id, nombre, costo, precio, stock) => {
 };
 
 // ==========================================
-// 6. POS (VENTAS CON BOLSILLO Y CIERRE)
+// 6. POS (VENTAS)
 // ==========================================
 let productosPOS = [];
 async function cargarPOS() {
@@ -262,18 +260,13 @@ document.getElementById('btn-procesar-venta').onclick = async () => {
     const ganancia = total - (prod.costo_compra * cant);
 
     try {
-        // Descontar stock
         await db.from('inventario').update({ stock: prod.stock - cant }).eq('id', prodId);
-        
-        // Guardar venta pendiente para el cierre
         await db.from('ventas_registro').insert([{ producto: prod.nombre, ganancia_neta: ganancia }]);
 
         if (metodo === 'CONTADO') {
-            // Ingresa el dinero al bolsillo de la caja
             const { data: caja } = await db.from('caja_principal').select('*').eq('id', 1).single();
             await db.from('caja_principal').update({ [bolsillo.toLowerCase()]: parseFloat(caja[bolsillo.toLowerCase()]) + total }).eq('id', 1);
         } else {
-            // A crédito: suma deuda
             if(!deudorNombre) return alert('Nombre deudor obligatorio');
             const { data: dExistente } = await db.from('deudores').select('id, deuda_acumulada').ilike('nombre', deudorNombre).single();
             if (dExistente) await db.from('deudores').update({ deuda_acumulada: parseFloat(dExistente.deuda_acumulada) + total }).eq('id', dExistente.id);
@@ -288,7 +281,7 @@ document.getElementById('btn-procesar-venta').onclick = async () => {
 };
 
 // ==========================================
-// 7. DEUDORES (CON HISTORIAL)
+// 7. DEUDORES Y ABONOS
 // ==========================================
 async function cargarDeudores() {
     try {
@@ -300,10 +293,7 @@ async function cargarDeudores() {
             lista.innerHTML += `
                 <li class="historial-item" style="display:flex; justify-content:space-between; align-items:center;">
                     <div><strong style="color: #f87171;">${d.nombre}</strong><br>Deuda: <b>$${deuda.toFixed(2)}</b></div>
-                    <div style="display:flex; gap:5px;">
-                        <button onclick="prepararAbono('${d.id}', '${d.nombre}', ${deuda})" style="background:#4ade80; color:#121212; border:none; padding:8px; border-radius:5px; font-weight:bold; cursor:pointer;">Abonar</button>
-                        <button onclick="verHistorialDeudor('${d.nombre}')" style="background:#444; color:white; border:none; padding:8px; border-radius:5px; cursor:pointer;">Historial</button>
-                    </div>
+                    <button onclick="prepararAbono('${d.id}', '${d.nombre}', ${deuda})" style="background:#4ade80; color:#121212; border:none; padding:8px 15px; border-radius:5px; font-weight:bold; cursor:pointer;">Abonar</button>
                 </li>`;
         });
     } catch (e) {}
@@ -317,7 +307,7 @@ window.prepararAbono = (id, nombre, deuda) => {
 
 window.procesarAbonoDeudor = async () => {
     const monto = parseFloat(document.getElementById('abono-monto').value);
-    const metodo = document.getElementById('abono-metodo').value; // BANCO, EFECTIVO, USDT
+    const metodo = document.getElementById('abono-metodo').value;
     const ref = document.getElementById('abono-ref').value;
     const bs = document.getElementById('abono-bs').value;
     const receptor = document.getElementById('abono-receptor').value;
@@ -325,16 +315,13 @@ window.procesarAbonoDeudor = async () => {
     if (isNaN(monto) || monto <= 0 || monto > deudorActualDeuda) return alert('Monto inválido o mayor a la deuda');
 
     try {
-        // 1. Restar deuda
         const nuevaDeuda = deudorActualDeuda - monto;
         if (nuevaDeuda <= 0) await db.from('deudores').delete().eq('id', deudorActualId);
         else await db.from('deudores').update({ deuda_acumulada: nuevaDeuda }).eq('id', deudorActualId);
 
-        // 2. Ingresar dinero a la Caja en el bolsillo correspondiente
         const { data: caja } = await db.from('caja_principal').select('*').eq('id', 1).single();
         await db.from('caja_principal').update({ [metodo.toLowerCase()]: parseFloat(caja[metodo.toLowerCase()]) + monto }).eq('id', 1);
 
-        // 3. Registrar Movimiento Deudor
         await db.from('historial_deudores').insert([{
             deudor_nombre: deudorActualNombre, monto, metodo_pago: metodo, referencia: ref, monto_bs: parseFloat(bs)||0, receptor, usuario: currentUser.email
         }]);
@@ -345,35 +332,6 @@ window.procesarAbonoDeudor = async () => {
     } catch (e) { alert(e.message); }
 };
 
-window.verHistorialDeudor = async (nombre) => {
-    document.getElementById('historial-nombre-lbl').innerText = nombre;
-    const lista = document.getElementById('historial-deudor-lista');
-    lista.innerHTML = 'Cargando...';
-    abrirModal('modal-historial-deudor');
-
-    try {
-        const { data } = await db.from('historial_deudores').select('*').eq('deudor_nombre', nombre).order('fecha', {ascending: false});
-        if (!data || data.length === 0) return lista.innerHTML = '<p>No hay abonos registrados.</p>';
-        
-        lista.innerHTML = '';
-        data.forEach(h => {
-            const f = new Date(h.fecha).toLocaleString();
-            let detalles = `<b>Método:</b> ${h.metodo_pago}`;
-            if(h.metodo_pago === 'BANCO') detalles += ` | <b>Ref:</b> ${h.referencia} | <b>Bs:</b> ${h.monto_bs}`;
-            if(h.metodo_pago === 'EFECTIVO') detalles += ` | <b>Recibió:</b> ${h.receptor}`;
-
-            lista.innerHTML += `
-                <div class="historial-item">
-                    <div style="display:flex; justify-content:space-between; margin-bottom:5px;">
-                        <span style="color:#aaa; font-size:0.8rem;">${f}</span>
-                        <b style="color:#4ade80;">+$${h.monto}</b>
-                    </div>
-                    <div style="color:#ccc; font-size:0.85rem;">${detalles}<br><small>Por: ${h.usuario.split('@')[0]}</small></div>
-                </div>`;
-        });
-    } catch (e) { lista.innerHTML = 'Error cargando historial.'; }
-};
-
 // ==========================================
 // 8. PASTOR (CIERRES Y LIQUIDACIONES)
 // ==========================================
@@ -382,7 +340,6 @@ async function cargarPastor() {
         const { data: c } = await db.from('cuenta_pastor').select('saldo_acumulado').eq('id', 1).single();
         document.getElementById('saldo-pastor').innerText = c ? parseFloat(c.saldo_acumulado).toFixed(2) : "0.00";
 
-        // Cargar Historial Cierres
         const { data: cierres } = await db.from('cierres_semanales').select('*').order('fecha', {ascending: false});
         const lc = document.getElementById('lista-cierres-pastor');
         lc.innerHTML = '';
@@ -393,7 +350,6 @@ async function cargarPastor() {
                 </li>`;
         });
 
-        // Cargar Historial Liquidaciones
         const { data: hist } = await db.from('historial_pastor').select('*').order('fecha', {ascending: false});
         const lh = document.getElementById('lista-historial-pastor');
         lh.innerHTML = '';
@@ -401,7 +357,7 @@ async function cargarPastor() {
             lh.innerHTML += `
                 <li class="historial-item" style="border-left-color: #f87171;">
                     <span style="color:#aaa; font-size:0.8rem;">${new Date(h.fecha).toLocaleString()}</span><br>
-                    Retiro/Pago: <b style="color:#f87171;">-$${h.monto}</b> <br> <small>Registrado por: ${h.usuario}</small>
+                    Retiro/Pago: <b style="color:#f87171;">-$${h.monto}</b> <br> <small>Registrado por: ${h.usuario.split('@')[0]}</small>
                 </li>`;
         });
     } catch (e) {}
@@ -410,7 +366,6 @@ async function cargarPastor() {
 window.cerrarSemana = async () => {
     if(!confirm('¿Seguro que deseas calcular el 25% de todas las ventas pendientes desde el último cierre?')) return;
     try {
-        // Buscar ventas no cerradas
         const { data: ventas } = await db.from('ventas_registro').select('ganancia_neta').eq('cerrado', false);
         if(!ventas || ventas.length === 0) return alert('No hay ventas nuevas registradas desde el último cierre.');
 
@@ -418,14 +373,10 @@ window.cerrarSemana = async () => {
         ventas.forEach(v => gananciaTotal += parseFloat(v.ganancia_neta));
         const porcion = gananciaTotal * 0.25;
 
-        // Sumar al saldo del pastor
         const { data: fondo } = await db.from('cuenta_pastor').select('saldo_acumulado').eq('id', 1).single();
         await db.from('cuenta_pastor').update({ saldo_acumulado: parseFloat(fondo.saldo_acumulado) + porcion }).eq('id', 1);
 
-        // Marcar ventas como cerradas
         await db.from('ventas_registro').update({ cerrado: true }).eq('cerrado', false);
-
-        // Guardar historial
         await db.from('cierres_semanales').insert([{ ganancia_total: gananciaTotal, porcion_pastor: porcion }]);
 
         alert(`✅ Semana cerrada exitosamente.\nGanancia Neta calculada: $${gananciaTotal.toFixed(2)}\n25% agregado al Pastor: $${porcion.toFixed(2)}`);
@@ -443,12 +394,72 @@ window.abrirModalLiquidacion = async () => {
 
     try {
         await db.from('cuenta_pastor').update({ saldo_acumulado: saldo - monto }).eq('id', 1);
-        
-        // Registrar en historial del pastor
         await db.from('historial_pastor').insert([{ monto: monto, concepto: 'Liquidación de porcentaje', usuario: currentUser.email }]);
-        
-        // OPCIONAL: Si quieres que el dinero del pastor SALGA de la caja de efectivo automáticamente, debes registrar el egreso manualmente en el dashboard o podemos vincularlo después.
         alert('✅ Pago al pastor registrado.');
         cargarPastor();
     } catch (e) { alert(e.message); }
 };
+
+// ==========================================
+// 9. LIBRO MAYOR (HISTORIAL GENERAL)
+// ==========================================
+async function cargarHistorialGeneral() {
+    try {
+        const { data: abonos } = await db.from('historial_deudores').select('*');
+        const { data: egresos } = await db.from('movimientos_caja').select('*');
+        
+        let movimientos = [];
+        
+        if (abonos) {
+            abonos.forEach(a => {
+                movimientos.push({
+                    fecha: new Date(a.fecha),
+                    monto: a.monto,
+                    tipo: 'INGRESO',
+                    descripcion: `Abono de Deuda - ${a.deudor_nombre}`,
+                    detalles: a.metodo_pago === 'BANCO' ? `Pago Móvil | Ref: ${a.referencia} | Bs: ${a.monto_bs}` : `Efectivo | Entregado a: ${a.receptor || 'No especificado'}`,
+                    usuario: a.usuario
+                });
+            });
+        }
+        
+        if (egresos) {
+            egresos.forEach(e => {
+                movimientos.push({
+                    fecha: new Date(e.fecha),
+                    monto: e.monto,
+                    tipo: 'EGRESO',
+                    descripcion: `Egreso de Caja (${e.bolsillo}) - ${e.concepto}`,
+                    detalles: `Salida de dinero registrada`,
+                    usuario: e.usuario
+                });
+            });
+        }
+
+        movimientos.sort((a, b) => b.fecha - a.fecha);
+
+        const lista = document.getElementById('lista-historial-general');
+        lista.innerHTML = '';
+
+        if (movimientos.length === 0) {
+            lista.innerHTML = '<li class="historial-item" style="color:#aaa; text-align:center;">No hay movimientos registrados.</li>';
+            return;
+        }
+
+        movimientos.forEach(m => {
+            const esIngreso = m.tipo === 'INGRESO';
+            const color = esIngreso ? '#4ade80' : '#f87171';
+            const signo = esIngreso ? '+' : '-';
+            
+            lista.innerHTML += `
+                <li class="historial-item" style="border-left-color: ${color};">
+                    <div style="display:flex; justify-content:space-between; margin-bottom:5px;">
+                        <span style="color:#aaa; font-size:0.8rem;">${m.fecha.toLocaleString()}</span>
+                        <b style="color:${color};">${signo}$${m.monto.toFixed(2)}</b>
+                    </div>
+                    <div style="color:#fff; font-size:1rem; margin-bottom: 5px;">${m.descripcion}</div>
+                    <div style="color:#ccc; font-size:0.85rem;">${m.detalles}<br><small style="color:#888;">Operado por: ${m.usuario.split('@')[0]}</small></div>
+                </li>`;
+        });
+    } catch (e) { console.error('Error cargando historial', e); }
+}
