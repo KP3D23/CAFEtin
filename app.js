@@ -296,41 +296,8 @@ async function cargarDeudores() {
                     <button onclick="prepararAbono('${d.id}', '${d.nombre}', ${deuda})" style="background:#4ade80; color:#121212; border:none; padding:8px 15px; border-radius:5px; font-weight:bold; cursor:pointer;">Abonar</button>
                 </li>`;
         });
-    } catch (e) {}
+    } catch (e) { console.error(e); }
 }
-
-window.prepararAbono = (id, nombre, deuda) => {
-    deudorActualId = id; deudorActualNombre = nombre; deudorActualDeuda = deuda;
-    document.getElementById('abono-nombre-lbl').innerText = nombre;
-    abrirModal('modal-abono');
-};
-
-window.procesarAbonoDeudor = async () => {
-    const monto = parseFloat(document.getElementById('abono-monto').value);
-    const metodo = document.getElementById('abono-metodo').value;
-    const ref = document.getElementById('abono-ref').value;
-    const bs = document.getElementById('abono-bs').value;
-    const receptor = document.getElementById('abono-receptor').value;
-
-    if (isNaN(monto) || monto <= 0 || monto > deudorActualDeuda) return alert('Monto inválido o mayor a la deuda');
-
-    try {
-        const nuevaDeuda = deudorActualDeuda - monto;
-        if (nuevaDeuda <= 0) await db.from('deudores').delete().eq('id', deudorActualId);
-        else await db.from('deudores').update({ deuda_acumulada: nuevaDeuda }).eq('id', deudorActualId);
-
-        const { data: caja } = await db.from('caja_principal').select('*').eq('id', 1).single();
-        await db.from('caja_principal').update({ [metodo.toLowerCase()]: parseFloat(caja[metodo.toLowerCase()]) + monto }).eq('id', 1);
-
-        await db.from('historial_deudores').insert([{
-            deudor_nombre: deudorActualNombre, monto, metodo_pago: metodo, referencia: ref, monto_bs: parseFloat(bs)||0, receptor, usuario: currentUser.email
-        }]);
-
-        alert('✅ Abono registrado');
-        cerrarModal('modal-abono');
-        cargarTodo();
-    } catch (e) { alert(e.message); }
-};
 
 // ==========================================
 // 8. PASTOR (CIERRES Y LIQUIDACIONES)
