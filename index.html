@@ -37,7 +37,7 @@
             <button onclick="mostrarPanel('inventario')" class="btn-sec">Inventario</button>
             <button onclick="mostrarPanel('deudores')" class="btn-sec">Deudores</button>
             <button onclick="mostrarPanel('pastor')" class="btn-sec">Fondo Pastor</button>
-            <button onclick="mostrarPanel('historial')" class="btn-sec" style="background: #facc15; color: #121212;">Historial</button>
+            <button onclick="mostrarPanel('historial')" class="btn-sec" style="background: #facc15; color: #121212;">Libro Mayor</button>
         </nav>
 
         <!-- PANEL 0: DASHBOARD -->
@@ -48,14 +48,13 @@
                 <p style="color: #aaa; font-size: 0.9rem;">Dinero disponible + Cuentas por cobrar</p>
                 <button onclick="abrirModalEgreso()" style="margin-top: 15px; background: #f87171; color: white; border: none; padding: 10px 20px; border-radius: 5px; cursor: pointer; font-weight: bold;">💸 Registrar Egreso / Compra</button>
             </div>
-
             <div style="display: flex; gap: 10px; flex-wrap: wrap;">
                 <div class="card" style="flex: 1; min-width: 150px;">
                     <h3 style="color: #4db8ff;">CAJA TOTAL</h3>
                     <h2 style="margin: 10px 0;">$<span id="dash-caja">0.00</span></h2>
                     <ul style="list-style: none; padding: 0; font-size: 0.9rem; color: #aaa; text-align: left;">
-                        <li>🏦 Banco: $<span id="dash-banco">0.00</span></li>
-                        <li>💵 Efectivo: $<span id="dash-efectivo">0.00</span></li>
+                        <li>🏦 Banco/Efvo Bs: $<span id="dash-banco">0.00</span></li>
+                        <li>💵 Efectivo ($): $<span id="dash-efectivo">0.00</span></li>
                         <li>🪙 USDT: $<span id="dash-usdt">0.00</span></li>
                     </ul>
                 </div>
@@ -67,12 +66,12 @@
                 <div class="card" style="flex: 1; min-width: 150px;">
                     <h3 style="color: #facc15;">INVENTARIO</h3>
                     <h2 style="margin: 10px 0;">$<span id="dash-inv">0.00</span></h2>
-                    <p style="font-size: 0.8rem; color: #aaa;">Dinero invertido en productos</p>
+                    <p style="font-size: 0.8rem; color: #aaa;">Dinero en productos</p>
                 </div>
             </div>
         </section>
 
-       <!-- PANEL 1: POS (Carrito de Compras) -->
+        <!-- PANEL 1: POS (Carrito y Registro) -->
         <section id="panel-pos" class="panel" style="display: none;">
             <div class="card" style="text-align: left;">
                 <h2 style="margin-bottom: 15px; color: #4db8ff;">Punto de Venta</h2>
@@ -91,7 +90,7 @@
                     </div>
                 </div>
 
-                <!-- Lista del Carrito -->
+                <!-- Carrito -->
                 <div style="background: #181818; padding: 15px; border-radius: 8px; border: 1px solid #333; margin-bottom: 15px;">
                     <h3 style="color: #aaa; font-size: 1rem; margin-bottom: 10px;">Carrito Actual</h3>
                     <ul id="lista-carrito" style="list-style: none; padding: 0; margin-bottom: 15px; font-size: 0.9rem;">
@@ -103,29 +102,36 @@
                     </div>
                 </div>
 
-                <label>Método de Venta</label>
+                <h3 style="margin-bottom: 10px; margin-top: 20px; border-bottom: 1px solid #444; padding-bottom: 5px;">Detalles del Pago</h3>
+
+                <label>Cliente / Deudor</label>
+                <input type="text" id="venta-cliente" placeholder="Ej: Francisco, Mariana, Hermano Pedro...">
+
+                <label>Forma de Pago</label>
                 <select id="venta-metodo">
-                    <option value="CONTADO">Al Contado (Ingresa a Caja)</option>
-                    <option value="CREDITO">A Crédito (Va a Deudores)</option>
+                    <option value="BANCO">Pago Móvil o Efectivo Bs -> (Suma al Banco)</option>
+                    <option value="EFECTIVO">Efectivo ($) -> (Suma a Caja Efectivo)</option>
+                    <option value="USDT">USDT -> (Suma a Caja USDT)</option>
+                    <option value="CREDITO">A Crédito -> (Suma a Deudores)</option>
                 </select>
 
-                <div id="caja-bolsillo" style="display: block;">
-                    <label>¿A dónde entra el dinero?</label>
-                    <select id="venta-bolsillo">
-                        <option value="BANCO">Banco (Pago Móvil)</option>
-                        <option value="EFECTIVO">Efectivo</option>
-                        <option value="USDT">USDT</option>
-                    </select>
+                <div id="caja-banco-detalles" style="display: block; background: #111; padding: 15px; border-radius: 5px; margin-bottom: 15px;">
+                    <label style="font-size: 0.85rem;">Referencia (Si es PM) / Nota (Si es Efectivo Bs)</label>
+                    <input type="text" id="venta-ref" placeholder="Ej: 1234 o 'Entregó efectivo Francisco'">
+                    <label style="font-size: 0.85rem; margin-top: 10px;">Monto Bs</label>
+                    <input type="number" id="venta-bs" placeholder="Ej: 450.50">
                 </div>
 
-                <div id="caja-deudor" style="display: none;">
-                    <label>Nombre del Deudor</label>
-                    <input type="text" id="venta-deudor" placeholder="Ej: Marianela">
-                </div>
+                <button id="btn-procesar-venta" class="btn-main" style="margin-top: 15px;">Procesar Venta Completa</button>
+            </div>
 
-                <button id="btn-procesar-venta" class="btn-main" style="margin-top: 10px;">Procesar Venta Completa</button>
+            <!-- Historial de Ventas Diario -->
+            <div class="card" style="text-align: left; margin-top: 20px; border-color: #333;">
+                <h3 style="margin-bottom: 15px; color: #4db8ff;">Últimas Ventas (Historial Diario)</h3>
+                <div id="lista-ventas-pos"></div>
             </div>
         </section>
+
         <!-- PANEL 2: INVENTARIO -->
         <section id="panel-inventario" class="panel" style="display: none;">
             <div class="card" style="text-align: left;">
@@ -172,7 +178,7 @@
             </div>
         </section>
 
-        <!-- PANEL 5: HISTORIAL GENERAL -->
+        <!-- PANEL 5: LIBRO MAYOR -->
         <section id="panel-historial" class="panel" style="display: none;">
             <div class="card" style="text-align: left; border-color: #facc15;">
                 <h2 style="color: #facc15; margin-bottom: 10px;">Libro Mayor de Registros</h2>
@@ -192,8 +198,8 @@
             <input type="number" id="egreso-monto" step="0.01">
             <label>¿De dónde sale el dinero?</label>
             <select id="egreso-bolsillo">
-                <option value="BANCO">Banco (Pago Móvil)</option>
-                <option value="EFECTIVO">Efectivo</option>
+                <option value="BANCO">Banco (Ofectivo Bs)</option>
+                <option value="EFECTIVO">Efectivo ($)</option>
                 <option value="USDT">USDT</option>
             </select>
             <div class="modal-btn-row">
@@ -210,18 +216,14 @@
             <input type="number" id="abono-monto" step="0.01">
             <label>Método de Pago</label>
             <select id="abono-metodo">
-                <option value="BANCO">Banco (Pago Móvil)</option>
-                <option value="EFECTIVO">Efectivo</option>
+                <option value="BANCO">Pago Móvil o Efectivo Bs (Banco)</option>
+                <option value="EFECTIVO">Efectivo ($)</option>
                 <option value="USDT">USDT</option>
             </select>
             
             <div id="abono-banco-campos" style="display: block; background: #111; padding: 10px; border-radius: 5px; margin-bottom: 15px;">
-                <input type="text" id="abono-ref" placeholder="Número de Referencia" style="margin-bottom: 10px;">
+                <input type="text" id="abono-ref" placeholder="Ref (PM) o Nota (Efvo Bs)" style="margin-bottom: 10px;">
                 <input type="number" id="abono-bs" placeholder="Monto depositado en Bs" style="margin-bottom: 0;">
-            </div>
-            
-            <div id="abono-efectivo-campos" style="display: none; background: #111; padding: 10px; border-radius: 5px; margin-bottom: 15px;">
-                <input type="text" id="abono-receptor" placeholder="¿A quién se le entregó el efectivo?" style="margin-bottom: 0;">
             </div>
 
             <div class="modal-btn-row">
@@ -231,15 +233,13 @@
         </div>
     </div>
 
-    <script src="app.js?v=17"></script>
+    <script src="app.js?v=21"></script>
     <script>
         document.getElementById('abono-metodo').addEventListener('change', function(e) {
             document.getElementById('abono-banco-campos').style.display = (e.target.value === 'BANCO') ? 'block' : 'none';
-            document.getElementById('abono-efectivo-campos').style.display = (e.target.value === 'EFECTIVO') ? 'block' : 'none';
         });
         document.getElementById('venta-metodo').addEventListener('change', function(e) {
-            document.getElementById('caja-bolsillo').style.display = (e.target.value === 'CONTADO') ? 'block' : 'none';
-            document.getElementById('caja-deudor').style.display = (e.target.value === 'CREDITO') ? 'block' : 'none';
+            document.getElementById('caja-banco-detalles').style.display = (e.target.value === 'BANCO') ? 'block' : 'none';
         });
     </script>
 </body>
