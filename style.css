@@ -1,18 +1,443 @@
-* { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
-body { background-color: #121212; color: #ffffff; padding: 20px; }
+* {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+    font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+}
 
-.login-container { max-width: 400px; margin: 100px auto; background: #1e1e1e; padding: 30px; border-radius: 10px; text-align: center; border: 1px solid #333; }
-.login-container h2 { margin-bottom: 20px; color: #4db8ff; }
-.login-container input { width: 100%; padding: 12px; margin-bottom: 15px; border: 1px solid #444; background: #2c2c2c; color: white; border-radius: 5px; outline: none; }
+body {
+    background-color: #0f172a;
+    color: #f8fafc;
+    padding: 14px;
+    line-height: 1.45;
+}
 
-.header { display: flex; justify-content: space-between; align-items: center; background: #181818; padding: 20px; border-radius: 10px; border-bottom: 2px solid #333; margin-bottom: 20px; }
-.header h1 { font-size: 1.5rem; color: #4db8ff; }
+/* =========================================
+   LOGIN & INPUTS GENERALES
+========================================= */
+.login-container {
+    max-width: 400px;
+    margin: 70px auto;
+    background: #1e293b;
+    padding: 30px;
+    border-radius: 14px;
+    text-align: center;
+    border: 1px solid #334155;
+    box-shadow: 0 10px 25px rgba(0, 0, 0, 0.4);
+}
 
-button { cursor: pointer; transition: 0.2s; font-weight: bold; border-radius: 8px; border: none; }
-.btn-main { background: #4db8ff; color: #121212; padding: 12px; width: 100%; font-size: 1rem; }
-.btn-main:hover { background: #3aa1e6; }
-.btn-sec { background: #333; color: white; padding: 10px 15px; flex: 1; border: 1px solid #444; }
-.btn-sec:hover { background: #4db8ff; color: #121212; border-color: #4db8ff; }
-#btn-logout { background: #f87171; color: #121212; padding: 8px 15px; }
+.login-container h2 {
+    margin-bottom: 20px;
+    color: #38bdf8;
+    font-size: 1.6rem;
+}
 
-.card { background: #1e1e1e; padding: 20px; border-radius: 8px; text-align: center; border: 1px solid #333; margin-bottom: 15px; }
+input, select, textarea {
+    width: 100%;
+    padding: 12px 14px;
+    margin-bottom: 12px;
+    border: 1px solid #475569;
+    background: #0f172a;
+    color: #fff;
+    border-radius: 8px;
+    outline: none;
+    font-size: 1rem;
+}
+
+input:focus, select:focus, textarea:focus {
+    border-color: #38bdf8;
+}
+
+label {
+    display: block;
+    font-size: 0.9rem;
+    color: #94a3b8;
+    margin-bottom: 4px;
+}
+
+/* =========================================
+   HEADER Y BOTONES
+========================================= */
+.header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    background: #1e293b;
+    padding: 16px 20px;
+    border-radius: 12px;
+    border: 1px solid #334155;
+    margin-bottom: 16px;
+    gap: 10px;
+}
+
+.header h1 {
+    font-size: 1.35rem;
+    color: #38bdf8;
+}
+
+button {
+    cursor: pointer;
+    transition: 0.15s ease;
+    font-weight: 700;
+    border-radius: 10px;
+    border: none;
+    font-size: 1rem;
+}
+
+button:active {
+    transform: scale(0.98);
+}
+
+.btn-main {
+    background: #38bdf8;
+    color: #0f172a;
+    padding: 14px;
+    width: 100%;
+    font-size: 1.05rem;
+}
+
+.btn-main:hover {
+    background: #0ea5e9;
+}
+
+.btn-sec {
+    background: #1e293b;
+    color: #e2e8f0;
+    padding: 12px 16px;
+    flex: 1;
+    min-width: 115px;
+    border: 1px solid #334155;
+}
+
+.btn-sec:hover, .btn-sec.active {
+    background: #38bdf8;
+    color: #0f172a;
+    border-color: #38bdf8;
+}
+
+#btn-logout {
+    background: #ef4444;
+    color: #fff;
+    padding: 10px 16px;
+    font-size: 0.95rem;
+}
+
+/* =========================================
+   TARJETAS Y GRIDS DE ESTADÍSTICAS
+========================================= */
+.card {
+    background: #1e293b;
+    padding: 18px;
+    border-radius: 12px;
+    border: 1px solid #334155;
+    margin-bottom: 16px;
+}
+
+.card-title {
+    font-size: 1.15rem;
+    font-weight: 700;
+    margin-bottom: 12px;
+    color: #38bdf8;
+}
+
+.grid-stats {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(155px, 1fr));
+    gap: 12px;
+    margin-bottom: 16px;
+}
+
+.stat-box {
+    background: #1e293b;
+    padding: 16px;
+    border-radius: 12px;
+    border: 1px solid #334155;
+    text-align: center;
+}
+
+.stat-box small {
+    color: #94a3b8;
+    font-size: 0.82rem;
+    display: block;
+    margin-bottom: 4px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.stat-box strong {
+    font-size: 1.7rem;
+    display: block;
+}
+
+/* =========================================
+   POS MODERNO (CAFETÍN Y BOLSAS)
+========================================= */
+.pos-layout {
+    display: grid;
+    grid-template-columns: 1.35fr 1fr;
+    gap: 16px;
+    align-items: start;
+}
+
+.pos-catalog {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(145px, 1fr));
+    gap: 10px;
+    max-height: 480px;
+    overflow-y: auto;
+    padding-right: 4px;
+}
+
+.prod-tile {
+    background: #0f172a;
+    border: 2px solid #334155;
+    border-radius: 12px;
+    padding: 14px 10px;
+    text-align: center;
+    cursor: pointer;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    min-height: 112px;
+    user-select: none;
+}
+
+.prod-tile:hover {
+    border-color: #38bdf8;
+    background: #172554;
+}
+
+.prod-tile .p-name {
+    font-size: 1.02rem;
+    font-weight: 700;
+    color: #fff;
+    margin-bottom: 6px;
+}
+
+.prod-tile .p-price {
+    font-size: 1.25rem;
+    font-weight: 800;
+    color: #4ade80;
+}
+
+.prod-tile .p-stock {
+    font-size: 0.82rem;
+    color: #94a3b8;
+    margin-top: 4px;
+}
+
+/* Carrito y Controles Grandes */
+.cart-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    background: #0f172a;
+    padding: 10px 12px;
+    border-radius: 8px;
+    margin-bottom: 8px;
+    gap: 8px;
+}
+
+.qty-ctrl {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.qty-btn {
+    width: 36px;
+    height: 36px;
+    border-radius: 8px;
+    background: #334155;
+    color: #fff;
+    font-size: 1.2rem;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.qty-btn:hover {
+    background: #475569;
+}
+
+/* =========================================
+   INVENTARIO EDITABLE
+========================================= */
+.table-wrap {
+    overflow-x: auto;
+}
+
+.inv-table {
+    width: 100%;
+    border-collapse: collapse;
+    min-width: 560px;
+}
+
+.inv-table th {
+    text-align: left;
+    padding: 10px 8px;
+    color: #94a3b8;
+    border-bottom: 1px solid #334155;
+    font-size: 0.9rem;
+}
+
+.inv-table td {
+    padding: 8px 6px;
+    border-bottom: 1px solid #0f172a;
+}
+
+.inv-table input {
+    margin-bottom: 0;
+    padding: 8px 10px;
+    font-size: 0.95rem;
+}
+
+/* =========================================
+   ACORDEÓN DE DEUDORES (FIFO)
+========================================= */
+.deudor-item {
+    background: #1e293b;
+    border: 1px solid #334155;
+    border-radius: 10px;
+    margin-bottom: 10px;
+    overflow: hidden;
+}
+
+.deudor-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 14px 16px;
+    cursor: pointer;
+    gap: 10px;
+    flex-wrap: wrap;
+}
+
+.deudor-header:hover {
+    background: #26354d;
+}
+
+.deudor-body {
+    display: none;
+    background: #0f172a;
+    padding: 12px 16px;
+    border-top: 1px solid #334155;
+}
+
+.deudor-body.open {
+    display: block;
+}
+
+.factura-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 10px 0;
+    border-bottom: 1px dashed #334155;
+    gap: 10px;
+    font-size: 0.95rem;
+}
+
+.factura-row:last-child {
+    border-bottom: none;
+}
+
+/* =========================================
+   DESPLEGABLES COMPACTOS Y CONSOLA SQL
+========================================= */
+.compact-toggle {
+    background: #334155;
+    color: #f8fafc;
+    padding: 10px 14px;
+    font-size: 0.92rem;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.compact-toggle:hover {
+    background: #475569;
+}
+
+.compact-drawer {
+    display: none;
+    margin-top: 12px;
+    padding-top: 12px;
+    border-top: 1px solid #334155;
+    text-align: left;
+}
+
+.compact-drawer.open {
+    display: block;
+}
+
+.sql-textarea {
+    font-family: 'Consolas', 'Courier New', monospace;
+    font-size: 0.9rem;
+    min-height: 140px;
+    background: #020617;
+    color: #4ade80;
+    border: 1px solid #334155;
+    resize: vertical;
+}
+
+/* =========================================
+   HISTORIAL Y MODALES
+========================================= */
+.historial-item {
+    background: #0f172a;
+    padding: 12px;
+    border-radius: 8px;
+    margin-bottom: 10px;
+    border-left: 4px solid #38bdf8;
+    font-size: 0.95rem;
+}
+
+.modal-bg {
+    display: none;
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.8);
+    z-index: 1000;
+    justify-content: center;
+    align-items: center;
+    padding: 14px;
+}
+
+.modal-content {
+    background: #1e293b;
+    padding: 24px;
+    border-radius: 14px;
+    border: 1px solid #475569;
+    width: 100%;
+    max-width: 440px;
+    color: white;
+}
+
+.modal-btn-row {
+    display: flex;
+    gap: 10px;
+    margin-top: 12px;
+}
+
+.btn-cancel {
+    background: #475569;
+    color: white;
+    padding: 12px;
+    flex: 1;
+}
+
+/* =========================================
+   RESPONSIVE MÓVIL
+========================================= */
+@media (max-width: 768px) {
+    body { padding: 10px; }
+    .pos-layout { grid-template-columns: 1fr; }
+    .pos-catalog { max-height: 320px; grid-template-columns: repeat(auto-fill, minmax(125px, 1fr)); }
+    .header h1 { font-size: 1.15rem; }
+    .stat-box strong { font-size: 1.45rem; }
+    .btn-sec { padding: 11px 10px; font-size: 0.92rem; min-width: 95px; }
+}
