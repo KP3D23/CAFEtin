@@ -74,14 +74,12 @@
         <!-- PANEL 1: POS CAFETÍN (RENOVADO) -->
         <section id="panel-pos" class="panel" style="display: none;">
             <div class="pos-layout">
-                <!-- Catálogo táctil -->
                 <div class="card">
                     <div class="card-title">1. Toca el producto para agregar</div>
                     <input type="text" id="cafetin-pos-buscar" placeholder="🔍 Buscar producto..." oninput="filtrarCatalogoCafetin()">
                     <div id="cafetin-pos-catalogo" class="pos-catalog"></div>
                 </div>
 
-                <!-- Carrito y Cobro -->
                 <div class="card" style="border-color: #38bdf8;">
                     <div class="card-title">2. Carrito Actual</div>
                     <div id="lista-carrito" style="margin-bottom: 12px;">
@@ -115,7 +113,6 @@
                 </div>
             </div>
 
-            <!-- Historial de Ventas Diario -->
             <div class="card" style="margin-top: 16px;">
                 <div class="card-title">Últimas Ventas (Historial Diario)</div>
                 <div id="lista-ventas-pos"></div>
@@ -190,7 +187,7 @@
                 <button onclick="mostrarPanelBolsas('b-deudores')" class="btn-sec" id="btn-nav-b-deudores">👥 Deudores</button>
             </nav>
 
-            <!-- 1. DASHBOARD BOLSAS (SEMANAL) -->
+            <!-- 1. DASHBOARD BOLSAS (SEMANAL + GANANCIAS) -->
             <section id="b-dashboard" class="b-panel" style="display: none;">
                 <div class="card" style="border-color: #4ade80; text-align: center;">
                     <small style="color: #94a3b8; font-size: 0.95rem;">DINERO TOTAL EN CAJA</small>
@@ -229,6 +226,25 @@
                         <small>Gastos Semana</small>
                         <strong style="color: #f87171;">$<span id="b-sem-gastos">0.00</span></strong>
                     </div>
+                </div>
+
+                <!-- BLOQUE DE GANANCIAS (CIERRES, SEMANAL Y MENSUAL) -->
+                <div class="card" style="border-color: #38bdf8;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; margin-bottom: 12px;">
+                        <div class="card-title" style="margin: 0; color: #4ade80;">📈 Ganancias Netas</div>
+                        <div style="display: flex; gap: 6px; flex-wrap: wrap;">
+                            <button onclick="cambiarVistaGanancias('cierre')" class="compact-toggle" id="btn-gan-cierre" style="background:#38bdf8; color:#0f172a;">Por Cierre</button>
+                            <button onclick="cambiarVistaGanancias('semanal')" class="compact-toggle" id="btn-gan-semanal">Semanal</button>
+                            <button onclick="cambiarVistaGanancias('mensual')" class="compact-toggle" id="btn-gan-mensual">Mensual</button>
+                        </div>
+                    </div>
+
+                    <div style="background: #0f172a; padding: 12px; border-radius: 8px; margin-bottom: 12px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;">
+                        <span style="color: #94a3b8; font-size: 0.92rem;">Ganancia acumulada desde último cierre (en curso):</span>
+                        <strong style="color: #4ade80; font-size: 1.25rem;">$<span id="b-ganancia-en-curso">0.00</span></strong>
+                    </div>
+
+                    <div id="b-lista-ganancias"></div>
                 </div>
 
                 <div class="card">
@@ -436,7 +452,7 @@
     </div>
 
     <script src="app.js?v=22"></script>
-    <script src="bolsas.js?v=1"></script>
+    <script src="bolsas.js?v=2"></script>
     <script>
         document.getElementById('abono-metodo').addEventListener('change', function(e) {
             document.getElementById('abono-banco-campos').style.display = (e.target.value === 'BANCO') ? 'block' : 'none';
