@@ -215,7 +215,7 @@
                 <h3 style="color: #94a3b8; margin-bottom: 10px; font-size: 0.92rem;">RESUMEN DE ESTA SEMANA (Últimos 7 días)</h3>
                 <div class="grid-stats">
                     <div class="stat-box">
-                        <small>Ventas Semana (BCV)</small>
+                        <small>Ventas Semana</small>
                         <strong style="color: #38bdf8;">$<span id="b-sem-ventas">0.00</span></strong>
                     </div>
                     <div class="stat-box">
@@ -252,27 +252,26 @@
                 </div>
             </section>
 
-            <!-- 2. PUNTO DE VENTA BOLSAS (ORDEN EXCEL + MILLAR / 1/2 / PAQUETE) -->
+            <!-- 2. PUNTO DE VENTA BOLSAS (NORMAL / ESPECIAL / DIVISA +5%) -->
             <section id="b-pos" class="b-panel" style="display: none;">
                 <div class="card" style="padding: 14px; border-color: #facc15;">
                     <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
-                        <span style="font-weight: 700; color: #e2e8f0; font-size: 1.02rem;">Tarifa (Precio por Millar / 10 paq.):</span>
-                        <div style="display: flex; gap: 8px; flex: 1; max-width: 420px;">
-                            <button id="btn-tarifa-normal" onclick="cambiarTarifaBolsas('NORMAL')" style="flex:1; padding:11px; background:#38bdf8; color:#0f172a;">📦 Normal (×2.0)</button>
-                            <button id="btn-tarifa-especial" onclick="cambiarTarifaBolsas('ESPECIAL')" style="flex:1; padding:11px; background:#334155; color:#f8fafc;">⭐ Especial (×1.65)</button>
+                        <span style="font-weight: 700; color: #e2e8f0; font-size: 1rem;">Tarifa (Millar / 10 paq.):</span>
+                        <div style="display: flex; gap: 6px; flex: 1; min-width: 280px; flex-wrap: wrap;">
+                            <button id="btn-tarifa-normal" onclick="cambiarTarifaBolsas('NORMAL')" style="flex:1; min-width:105px; padding:11px 8px; background:#38bdf8; color:#0f172a; font-size:0.92rem;">📦 Normal (×2)</button>
+                            <button id="btn-tarifa-especial" onclick="cambiarTarifaBolsas('ESPECIAL')" style="flex:1; min-width:105px; padding:11px 8px; background:#334155; color:#f8fafc; font-size:0.92rem;">⭐ Especial (×1.65)</button>
+                            <button id="btn-tarifa-divisa" onclick="cambiarTarifaBolsas('DIVISA')" style="flex:1; min-width:105px; padding:11px 8px; background:#334155; color:#f8fafc; font-size:0.92rem;">💵 Divisa (+5%)</button>
                         </div>
                     </div>
                 </div>
 
                 <div class="pos-layout">
-                    <!-- Catálogo en orden exacto del Excel con separadores -->
                     <div class="card">
                         <div class="card-title">1. Toca la bolsa (Precios por Millar)</div>
                         <input type="text" id="b-pos-buscar" placeholder="🔍 Buscar bolsa por nombre..." oninput="filtrarCatalogoBolsas()">
                         <div id="b-pos-catalogo" class="pos-catalog"></div>
                     </div>
 
-                    <!-- Carrito ligero con botones +1 M, +1/2 M, +1 Paq -->
                     <div class="card" style="border-color: #38bdf8;">
                         <div class="card-title">2. Pedido Actual (1 Millar = 10 Paq.)</div>
                         <div id="b-pos-carrito" style="margin-bottom: 12px;">
@@ -280,12 +279,12 @@
                         </div>
 
                         <div style="display: flex; justify-content: space-between; align-items: center; border-top: 2px solid #334155; padding-top: 12px; margin-bottom: 14px;">
-                            <span style="font-size: 1.1rem; color: #cbd5e1;">TOTAL (BCV):</span>
+                            <span id="b-pos-total-lbl" style="font-size: 1.05rem; color: #cbd5e1;">TOTAL (BCV):</span>
                             <strong style="font-size: 2rem; color: #4ade80;">$<span id="b-pos-total">0.00</span></strong>
                         </div>
 
                         <label>Nombre del Cliente</label>
-                        <input type="text" id="b-pos-cliente" list="lista-clientes-especiales-dl" placeholder="Ej: Sabaneta, Abasto Central, Sr. Pedro..." oninput="verificarClienteEspecialAuto(this.value)">
+                        <input type="text" id="b-pos-cliente" list="lista-clientes-especiales-dl" placeholder="Ej: Panadería Carla, Carlos Alberto..." oninput="verificarClienteEspecialAuto(this.value)">
                         <datalist id="lista-clientes-especiales-dl"></datalist>
 
                         <label>¿Cómo paga?</label>
@@ -304,9 +303,8 @@
                 </div>
             </section>
 
-            <!-- 3. INVENTARIO + POR COBRAR + POR PAGAR AL LADO (IGUAL AL EXCEL) -->
+            <!-- 3. INVENTARIO + POR COBRAR + POR PAGAR AL LADO -->
             <section id="b-inventario" class="b-panel" style="display: none;">
-                <!-- Balance de Capital -->
                 <div class="card" style="border-color: #facc15;">
                     <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; margin-bottom: 12px;">
                         <div class="card-title" style="margin: 0; color: #facc15;">💰 Balance de Capital</div>
@@ -336,7 +334,6 @@
                     </div>
                 </div>
 
-                <!-- Control de Tasas USDT / BCV -->
                 <div class="card" style="border-color: #38bdf8; padding: 14px;">
                     <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
                         <span style="font-weight:700; color:#38bdf8;">💱 Tasas (Costo USDT → Venta BCV):</span>
@@ -350,9 +347,7 @@
                     </div>
                 </div>
 
-                <!-- ESTRUCTURA 2 COLUMNAS IGUAL AL EXCEL: IZQUIERDA INVENTARIO | DERECHA POR COBRAR + POR PAGAR -->
                 <div class="inv-excel-layout">
-                    <!-- Columna Izquierda: Tabla de Inventario en orden exacto -->
                     <div class="card">
                         <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; margin-bottom: 12px;">
                             <div class="card-title" style="margin: 0;">📦 Inventario (Orden Excel · Millares)</div>
@@ -376,16 +371,13 @@
                         </div>
                     </div>
 
-                    <!-- Columna Derecha: Cuadros POR COBRAR y POR PAGAR igual al Excel -->
                     <div>
-                        <!-- CUADRO 1: POR COBRAR -->
                         <div class="card" style="border-color: #4ade80;">
                             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
                                 <div class="card-title" style="margin: 0; color: #4ade80;">📥 POR COBRAR</div>
                                 <strong style="color: #4ade80; font-size: 1.15rem;">$<span id="b-box-porcobrar-total">0.00</span></strong>
                             </div>
 
-                            <!-- Línea automática vinculada a Deudores (Facturas) -->
                             <div class="side-ledger-row" style="border: 1px solid #38bdf8;">
                                 <div>
                                     <strong style="color: #38bdf8;">📄 FACTURAS CLIENTES</strong>
@@ -394,7 +386,6 @@
                                 <strong style="color: #38bdf8;">$<span id="b-facturas-clientes-total">0.00</span></strong>
                             </div>
 
-                            <!-- Cuentas externas editables (Franelas, Tinas, etc.) -->
                             <div id="b-lista-por-cobrar"></div>
 
                             <div style="display: flex; gap: 6px; margin-top: 10px;">
@@ -404,7 +395,6 @@
                             </div>
                         </div>
 
-                        <!-- CUADRO 2: POR PAGAR -->
                         <div class="card" style="border-color: #f87171;">
                             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
                                 <div class="card-title" style="margin: 0; color: #f87171;">📤 POR PAGAR</div>
@@ -420,7 +410,6 @@
                             </div>
                         </div>
 
-                        <!-- Clientes con Precio Especial -->
                         <div class="card" style="border-color: #facc15;">
                             <div class="card-title" style="color: #facc15; font-size: 1rem;">⭐ Clientes Tarifa Especial</div>
                             <div style="display: flex; gap: 6px; margin-bottom: 10px;">
@@ -432,14 +421,13 @@
                     </div>
                 </div>
 
-                <!-- Historial de Cortes -->
                 <div class="card">
                     <div class="card-title" style="color: #94a3b8;">📚 Inventarios Anteriores Guardados</div>
                     <div id="b-lista-cortes"></div>
                 </div>
             </section>
 
-            <!-- 4. DEUDORES BOLSAS (SOLO FACTURAS A CLIENTES - FIFO DESPLEGABLE) -->
+            <!-- 4. DEUDORES BOLSAS (FIFO DESPLEGABLE) -->
             <section id="b-deudores" class="b-panel" style="display: none;">
                 <div class="card">
                     <div class="card-title">👥 Deudores (Facturas Pendientes a Clientes)</div>
@@ -526,7 +514,7 @@
     </div>
 
     <script src="app.js?v=22"></script>
-    <script src="bolsas.js?v=4"></script>
+    <script src="bolsas.js?v=5"></script>
     <script>
         document.getElementById('abono-metodo').addEventListener('change', function(e) {
             document.getElementById('abono-banco-campos').style.display = (e.target.value === 'BANCO') ? 'block' : 'none';
