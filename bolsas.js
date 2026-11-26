@@ -6,6 +6,10 @@ let bolsasInventario = [];
 let bolsasCarrito = [];
 let bolsasProveedores = [];
 let bolsasFacturasPendientes = [];
+let bolsasTodasFacturas = [];
+let bolsasTodosMovimientos = [];
+let bolsasCortesHistorial = [];
+let vistaGananciasActual = 'cierre'; // 'cierre' | 'semanal' | 'mensual'
 let bAbonoClienteActual = '';
 let bAbonoMaxActual = 0;
 
@@ -34,8 +38,8 @@ window.cargarTodoBolsas = async function () {
         cargarDeudoresBolsas()
     ]);
     recalcularCapitalBolsas();
-    await cargarDashboardBolsas();
     await cargarCortesInventario();
+    await cargarDashboardBolsas();
 };
 
 function escHtml(str) {
@@ -59,11 +63,23 @@ function round2(n) {
 }
 
 // =========================================================
-// 2. DASHBOARD SEMANAL Y MOVIMIENTOS
+// 2. DASHBOARD SEMANAL, MOVIMIENTOS Y GANANCIAS
 // =========================================================
 window.toggleDrawerBolsas = function () {
     const drawer = document.getElementById('b-dash-drawer');
     if (drawer) drawer.classList.toggle('open');
+};
+
+window.cambiarVistaGanancias = function (vista) {
+    vistaGananciasActual = vista;
+    ['cierre', 'semanal', 'mensual'].forEach(v => {
+        const btn = document.getElementById(`btn-gan-${v}`);
+        if (btn) {
+            btn.style.background = (v === vista) ? '#38bdf8' : '#334155';
+            btn.style.color = (v === vista) ? '#0f172a' : '#f8fafc';
+        }
+    });
+    renderGananciasDashboard();
 };
 
 async function cargarDashboardBolsas() {
@@ -73,53 +89,54 @@ async function cargarDashboardBolsas() {
         const saldoCaja = caja ? parseNum(caja.saldo) : 0;
         document.getElementById('b-dash-caja').innerText = saldoCaja.toFixed(2);
 
-        // 2. Filtro últimos 7 días
-        const hace7Dias = new Date();
-        hace7Dias.setDate(hace7Dias.getDate() - 7);
-        const isoSemana = hace7Dias.toISOString();
-
-        // Ventas de la semana
-        const { data: ventasSem } = await db
+        // 2. Cargar histórico de facturas y movimientos para métricas semanales, mensuales y de ganancias
+        const { data: facturasData } = await db
             .from('bolsas_facturas')
-            .select('total_original')
-            .gte('fecha', isoSemana);
+            .select('*')
+            .order('fecha', { ascending: false });
 
-        let totalVentasSem = 0;
-        if (ventasSem) ventasSem.forEach(v => totalVentasSem += parseNum(v.total_original));
-        document.getElementById('b-sem-ventas').innerText = totalVentasSem.toFixed(2);
-
-        // Compras y Gastos de la semana
-        const { data: movsSem } = await db
+        const { data: movsData } = await db
             .from('bolsas_movimientos')
             .select('*')
-            .gte('fecha', isoSemana)
             .order('fecha', { ascending: false });
+
+        bolsasTodasFacturas = facturasData || [];
+        bolsasTodosMovimientos = movsData || [];
+
+        // 3. Resumen últimos 7 días
+        const hace7Dias = new Date();
+        hace7Dias.setDate(hace7Dias.getDate() - 7);
+
+        let totalVentasSem = 0;
+        bolsasTodasFacturas.forEach(v => {
+            if (new Date(v.fecha) >= hace7Dias) {
+                totalVentasSem = round2(totalVentasSem + parseNum(v.total_original));
+            }
+        });
+        document.getElementById('b-sem-ventas').innerText = totalVentasSem.toFixed(2);
 
         let totalComprasSem = 0;
         let totalGastosSem = 0;
-
-        if (movsSem) {
-            movsSem.forEach(m => {
+        bolsasTodosMovimientos.forEach(m => {
+            if (new Date(m.fecha) >= hace7Dias) {
                 const monto = parseNum(m.monto);
-                if (m.tipo === 'COMPRA') totalComprasSem += monto;
-                if (m.tipo === 'GASTO') totalGastosSem += monto;
-            });
-        }
+                if (m.tipo === 'COMPRA') totalComprasSem = round2(totalComprasSem + monto);
+                if (m.tipo === 'GASTO') totalGastosSem = round2(totalGastosSem + monto);
+            }
+        });
 
         document.getElementById('b-sem-compras').innerText = totalComprasSem.toFixed(2);
         document.getElementById('b-sem-gastos').innerText = totalGastosSem.toFixed(2);
 
-        // 3. Lista reciente de movimientos (últimos 25)
-        const { data: ultMovs } = await db
-            .from('bolsas_movimientos')
-            .select('*')
-            .order('fecha', { ascending: false })
-            .limit(25);
+        // 4. Renderizar bloque de Ganancias (En curso, Cierres, Semanal, Mensual)
+        renderGananciasDashboard();
 
+        // 5. Lista reciente de movimientos (últimos 25)
         const cont = document.getElementById('b-lista-movimientos');
         cont.innerHTML = '';
+        const ultMovs = bolsasTodosMovimientos.slice(0, 25);
 
-        if (!ultMovs || ultMovs.length === 0) {
+        if (ultMovs.length === 0) {
             cont.innerHTML = '<p style="color:#94a3b8; text-align:center;">Sin movimientos registrados aún.</p>';
             return;
         }
@@ -143,6 +160,175 @@ async function cargarDashboardBolsas() {
         });
     } catch (e) {
         console.error('Error cargando dashboard bolsas:', e);
+    }
+}
+
+function renderGananciasDashboard() {
+    // Calcular ganancia acumulada desde el último corte (en curso)
+    const ultimoCorte = bolsasCortesHistorial.length > 0 ? bolsasCortesHistorial[0] : null;
+    const fechaCorte = ultimoCorte ? new Date(ultimoCorte.fecha) : new Date(0);
+
+    let ganEnCurso = 0;
+    let gastosEnCurso = 0;
+
+    bolsasTodasFacturas.forEach(f => {
+        if (new Date(f.fecha) > fechaCorte) {
+            ganEnCurso = round2(ganEnCurso + parseNum(f.ganancia));
+        }
+    });
+    bolsasTodosMovimientos.forEach(m => {
+        if (m.tipo === 'GASTO' && new Date(m.fecha) > fechaCorte) {
+            gastosEnCurso = round2(gastosEnCurso + parseNum(m.monto));
+        }
+    });
+
+    const netaEnCurso = round2(ganEnCurso - gastosEnCurso);
+    const elEnCurso = document.getElementById('b-ganancia-en-curso');
+    if (elEnCurso) {
+        elEnCurso.innerText = netaEnCurso.toFixed(2);
+        elEnCurso.style.color = netaEnCurso >= 0 ? '#4ade80' : '#f87171';
+    }
+
+    const cont = document.getElementById('b-lista-ganancias');
+    if (!cont) return;
+    cont.innerHTML = '';
+
+    // VISTA 1: POR CIERRE DE INVENTARIO
+    if (vistaGananciasActual === 'cierre') {
+        if (bolsasCortesHistorial.length === 0) {
+            cont.innerHTML = '<p style="color:#94a3b8; font-size:0.9rem;">Aún no has guardado cortes de inventario. Usa el botón "📸 Guardar Corte de Hoy" en Inventario para cerrar período.</p>';
+            return;
+        }
+
+        bolsasCortesHistorial.forEach((c, idx) => {
+            const fechaStr = new Date(c.fecha).toLocaleDateString('es-VE', { day: '2-digit', month: '2-digit', year: 'numeric' });
+            const ganOp = parseNum(c.ganancia_operativa);
+            const varCap = parseNum(c.variacion_capital);
+            const esUltimo = (idx === bolsasCortesHistorial.length - 1);
+
+            cont.innerHTML += `
+                <div class="historial-item" style="border-left-color: ${ganOp >= 0 ? '#4ade80' : '#f87171'}; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">
+                    <div>
+                        <strong style="color:#38bdf8;">📅 Cierre ${fechaStr}</strong><br>
+                        <small style="color:#94a3b8;">
+                            Capital al cierre: $${parseNum(c.capital_total).toFixed(2)} 
+                            ${esUltimo ? '(Corte inicial)' : `| Var. Capital: ${varCap >= 0 ? '+' : ''}$${varCap.toFixed(2)}`}
+                        </small>
+                    </div>
+                    <div style="text-align:right;">
+                        <small style="color:#94a3b8; display:block;">Ganancia Neta</small>
+                        <strong style="font-size:1.15rem; color:${ganOp >= 0 ? '#4ade80' : '#f87171'};">$${ganOp.toFixed(2)}</strong>
+                    </div>
+                </div>
+            `;
+        });
+        return;
+    }
+
+    // VISTA 2: HISTÓRICO SEMANAL (Lunes a Domingo)
+    if (vistaGananciasActual === 'semanal') {
+        const semanas = {};
+
+        const getClaveSemana = (fechaIso) => {
+            const d = new Date(fechaIso);
+            const day = d.getDay();
+            const diffLunes = d.getDate() - day + (day === 0 ? -6 : 1);
+            const lunes = new Date(d.getFullYear(), d.getMonth(), diffLunes);
+            const domingo = new Date(lunes);
+            domingo.setDate(lunes.getDate() + 6);
+
+            const key = `${lunes.getFullYear()}-${String(lunes.getMonth() + 1).padStart(2, '0')}-${String(lunes.getDate()).padStart(2, '0')}`;
+            const label = `Del ${lunes.toLocaleDateString('es-VE', { day: '2-digit', month: '2-digit' })} al ${domingo.toLocaleDateString('es-VE', { day: '2-digit', month: '2-digit' })}`;
+            return { key, label };
+        };
+
+        bolsasTodasFacturas.forEach(f => {
+            const { key, label } = getClaveSemana(f.fecha);
+            if (!semanas[key]) semanas[key] = { key, label, ventas: 0, ganBruta: 0, gastos: 0 };
+            semanas[key].ventas = round2(semanas[key].ventas + parseNum(f.total_original));
+            semanas[key].ganBruta = round2(semanas[key].ganBruta + parseNum(f.ganancia));
+        });
+
+        bolsasTodosMovimientos.forEach(m => {
+            if (m.tipo === 'GASTO') {
+                const { key, label } = getClaveSemana(m.fecha);
+                if (!semanas[key]) semanas[key] = { key, label, ventas: 0, ganBruta: 0, gastos: 0 };
+                semanas[key].gastos = round2(semanas[key].gastos + parseNum(m.monto));
+            }
+        });
+
+        const listaSem = Object.values(semanas).sort((a, b) => b.key.localeCompare(a.key)).slice(0, 12);
+        if (listaSem.length === 0) {
+            cont.innerHTML = '<p style="color:#94a3b8; font-size:0.9rem;">No hay registros semanales aún.</p>';
+            return;
+        }
+
+        listaSem.forEach(s => {
+            const neta = round2(s.ganBruta - s.gastos);
+            cont.innerHTML += `
+                <div class="historial-item" style="border-left-color: ${neta >= 0 ? '#4ade80' : '#f87171'}; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">
+                    <div>
+                        <strong style="color:#fff;">📆 Semana ${s.label}</strong><br>
+                        <small style="color:#94a3b8;">Vendido: $${s.ventas.toFixed(2)} | Gan. Ventas: $${s.ganBruta.toFixed(2)} | Gastos: -$${s.gastos.toFixed(2)}</small>
+                    </div>
+                    <div style="text-align:right;">
+                        <small style="color:#94a3b8; display:block;">Ganancia Neta</small>
+                        <strong style="font-size:1.15rem; color:${neta >= 0 ? '#4ade80' : '#f87171'};">$${neta.toFixed(2)}</strong>
+                    </div>
+                </div>
+            `;
+        });
+        return;
+    }
+
+    // VISTA 3: HISTÓRICO MENSUAL
+    if (vistaGananciasActual === 'mensual') {
+        const meses = {};
+        const nombresMes = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
+
+        const getClaveMes = (fechaIso) => {
+            const d = new Date(fechaIso);
+            const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+            const label = `${nombresMes[d.getMonth()]} ${d.getFullYear()}`;
+            return { key, label };
+        };
+
+        bolsasTodasFacturas.forEach(f => {
+            const { key, label } = getClaveMes(f.fecha);
+            if (!meses[key]) meses[key] = { key, label, ventas: 0, ganBruta: 0, gastos: 0 };
+            meses[key].ventas = round2(meses[key].ventas + parseNum(f.total_original));
+            meses[key].ganBruta = round2(meses[key].ganBruta + parseNum(f.ganancia));
+        });
+
+        bolsasTodosMovimientos.forEach(m => {
+            if (m.tipo === 'GASTO') {
+                const { key, label } = getClaveMes(m.fecha);
+                if (!meses[key]) meses[key] = { key, label, ventas: 0, ganBruta: 0, gastos: 0 };
+                meses[key].gastos = round2(meses[key].gastos + parseNum(m.monto));
+            }
+        });
+
+        const listaMes = Object.values(meses).sort((a, b) => b.key.localeCompare(a.key)).slice(0, 12);
+        if (listaMes.length === 0) {
+            cont.innerHTML = '<p style="color:#94a3b8; font-size:0.9rem;">No hay registros mensuales aún.</p>';
+            return;
+        }
+
+        listaMes.forEach(m => {
+            const neta = round2(m.ganBruta - m.gastos);
+            cont.innerHTML += `
+                <div class="historial-item" style="border-left-color: ${neta >= 0 ? '#4ade80' : '#f87171'}; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">
+                    <div>
+                        <strong style="color:#facc15;">🗓️ ${m.label}</strong><br>
+                        <small style="color:#94a3b8;">Vendido: $${m.ventas.toFixed(2)} | Gan. Ventas: $${m.ganBruta.toFixed(2)} | Gastos: -$${m.gastos.toFixed(2)}</small>
+                    </div>
+                    <div style="text-align:right;">
+                        <small style="color:#94a3b8; display:block;">Ganancia Neta</small>
+                        <strong style="font-size:1.15rem; color:${neta >= 0 ? '#4ade80' : '#f87171'};">$${neta.toFixed(2)}</strong>
+                    </div>
+                </div>
+            `;
+        });
     }
 }
 
@@ -174,7 +360,6 @@ window.registrarMovimientoBolsas = async function () {
             monto
         }]);
 
-        // Si es abono a proveedor y coincide el nombre, descontar de su deuda automáticamente
         if (tipo === 'PAGO_PROVEEDOR') {
             const { data: prov } = await db
                 .from('bolsas_proveedores')
@@ -199,7 +384,7 @@ window.registrarMovimientoBolsas = async function () {
 };
 
 // =========================================================
-// 3. PUNTO DE VENTA BOLSAS (AMIGABLE)
+// 3. PUNTO DE VENTA BOLSAS (CONGELANDO GANANCIA POR VENTA)
 // =========================================================
 function renderCatalogoBolsas(lista) {
     const cont = document.getElementById('b-pos-catalogo');
@@ -252,6 +437,7 @@ function agregarAlCarritoBolsas(id) {
             id: prod.id,
             nombre: prod.nombre,
             precio: parseNum(prod.precio_venta),
+            costo: parseNum(prod.costo),
             stock: stockMax,
             cantidad: stockMax >= 1 ? 1 : stockMax
         });
@@ -349,15 +535,17 @@ window.procesarVentaBolsas = async function () {
     if (!cliente) cliente = 'Cliente General';
 
     let totalVenta = 0;
+    let totalGanancia = 0;
     const resumenProductos = [];
 
     try {
         for (const item of bolsasCarrito) {
             const sub = round2(item.precio * item.cantidad);
+            const costoSub = round2(item.costo * item.cantidad);
             totalVenta = round2(totalVenta + sub);
+            totalGanancia = round2(totalGanancia + (sub - costoSub));
             resumenProductos.push(`${item.cantidad}x ${item.nombre}`);
 
-            // Descontar inventario
             const { data: prodActual } = await db
                 .from('bolsas_inventario')
                 .select('cantidad')
@@ -375,19 +563,18 @@ window.procesarVentaBolsas = async function () {
 
         const esCredito = (metodo === 'CREDITO');
 
-        // Insertar factura
         await db.from('bolsas_facturas').insert([{
             cliente,
             productos: resumenProductos.join(', '),
             total_original: totalVenta,
             saldo_pendiente: esCredito ? totalVenta : 0,
+            ganancia: totalGanancia,
             metodo_pago: metodo,
             monto_bs_ref: bsRef,
             nota_ref: notaRef || null,
             pagada: !esCredito
         }]);
 
-        // Si fue de contado, sumar a la caja
         if (!esCredito) {
             const { data: caja } = await db.from('bolsas_caja').select('saldo').eq('id', 1).single();
             const saldoActual = caja ? parseNum(caja.saldo) : 0;
@@ -614,7 +801,6 @@ window.eliminarProveedorBolsas = async function (id, nombre) {
     }
 };
 
-// Fórmula: Inventario + Me Deben - Debo = Capital
 function recalcularCapitalBolsas(desdeInputs = false) {
     let totalInv = 0;
 
@@ -650,11 +836,10 @@ function recalcularCapitalBolsas(desdeInputs = false) {
     return { totalInv, totalMeDeben, totalDebo, capital };
 }
 
-// Guardar Corte de Inventario y mostrar historial debajo
+// Guardar Corte de Inventario y calcular Ganancia del Cierre
 window.guardarCorteInventario = async function () {
-    if (!confirm('¿Guardar una copia histórica del inventario y balance de hoy?')) return;
+    if (!confirm('¿Guardar una copia histórica del inventario y calcular la ganancia de este cierre?')) return;
 
-    // Primero sincronizar cualquier cambio que esté escrito en la tabla
     const filas = document.querySelectorAll('#b-tabla-inventario tr[data-id]');
     const detalleSnapshot = [];
 
@@ -682,16 +867,45 @@ window.guardarCorteInventario = async function () {
         await cargarInventarioBolsas();
         const { totalInv, totalMeDeben, totalDebo, capital } = recalcularCapitalBolsas(false);
 
+        // Calcular ganancia operativa desde el corte anterior
+        const { data: ultimoCorte } = await db
+            .from('bolsas_inventario_historial')
+            .select('fecha, capital_total')
+            .order('fecha', { ascending: false })
+            .limit(1)
+            .maybeSingle();
+
+        let queryFacturas = db.from('bolsas_facturas').select('ganancia');
+        let queryGastos = db.from('bolsas_movimientos').select('monto').eq('tipo', 'GASTO');
+
+        if (ultimoCorte) {
+            queryFacturas = queryFacturas.gt('fecha', ultimoCorte.fecha);
+            queryGastos = queryGastos.gt('fecha', ultimoCorte.fecha);
+        }
+
+        const [{ data: facsPeriodo }, { data: gastosPeriodo }] = await Promise.all([queryFacturas, queryGastos]);
+
+        let ganVentas = 0;
+        if (facsPeriodo) facsPeriodo.forEach(f => ganVentas = round2(ganVentas + parseNum(f.ganancia)));
+
+        let gastosTotal = 0;
+        if (gastosPeriodo) gastosPeriodo.forEach(g => gastosTotal = round2(gastosTotal + parseNum(g.monto)));
+
+        const gananciaOperativa = round2(ganVentas - gastosTotal);
+        const variacionCapital = ultimoCorte ? round2(capital - parseNum(ultimoCorte.capital_total)) : 0;
+
         await db.from('bolsas_inventario_historial').insert([{
             total_inventario: totalInv,
             total_me_deben: totalMeDeben,
             total_debo: totalDebo,
             capital_total: capital,
+            ganancia_operativa: gananciaOperativa,
+            variacion_capital: variacionCapital,
             detalle_json: detalleSnapshot
         }]);
 
-        alert('✅ Corte de inventario guardado en el historial.');
-        await cargarCortesInventario();
+        alert(`✅ Corte guardado.\nGanancia neta del período: $${gananciaOperativa.toFixed(2)}`);
+        await cargarTodoBolsas();
     } catch (e) {
         alert('Error guardando corte: ' + e.message);
     }
@@ -705,18 +919,20 @@ async function cargarCortesInventario() {
             .order('fecha', { ascending: false })
             .limit(20);
 
+        bolsasCortesHistorial = data || [];
         const cont = document.getElementById('b-lista-cortes');
         if (!cont) return;
         cont.innerHTML = '';
 
-        if (!data || data.length === 0) {
+        if (bolsasCortesHistorial.length === 0) {
             cont.innerHTML = '<p style="color:#94a3b8; font-size:0.9rem;">Aún no has guardado cortes anteriores.</p>';
             return;
         }
 
-        data.forEach((corte, idx) => {
+        bolsasCortesHistorial.forEach((corte, idx) => {
             const fechaStr = new Date(corte.fecha).toLocaleString('es-VE');
             const items = Array.isArray(corte.detalle_json) ? corte.detalle_json : [];
+            const ganOp = parseNum(corte.ganancia_operativa);
 
             let filasHtml = items.map(it => `
                 <div class="factura-row">
@@ -733,8 +949,8 @@ async function cargarCortesInventario() {
                             <small style="color:#94a3b8;">Inv: $${parseNum(corte.total_inventario).toFixed(2)} | Me deben: $${parseNum(corte.total_me_deben).toFixed(2)} | Debo: $${parseNum(corte.total_debo).toFixed(2)}</small>
                         </div>
                         <div style="text-align:right;">
-                            <b style="color:#facc15; font-size:1.1rem;">Capital: $${parseNum(corte.capital_total).toFixed(2)}</b>
-                            <span style="margin-left:8px; color:#94a3b8;">▼</span>
+                            <b style="color:#facc15; font-size:1.05rem; display:block;">Capital: $${parseNum(corte.capital_total).toFixed(2)}</b>
+                            <small style="color:${ganOp >= 0 ? '#4ade80' : '#f87171'}; font-weight:bold;">Ganancia cierre: $${ganOp.toFixed(2)} ▼</small>
                         </div>
                     </div>
                     <div id="corte-body-${idx}" class="deudor-body">
@@ -758,7 +974,7 @@ async function cargarDeudoresBolsas() {
             .select('*')
             .eq('pagada', false)
             .gt('saldo_pendiente', 0)
-            .order('fecha', { ascending: true }); // Más viejas primero (FIFO)
+            .order('fecha', { ascending: true });
 
         bolsasFacturasPendientes = data || [];
         renderDeudoresBolsas();
@@ -777,7 +993,6 @@ function renderDeudoresBolsas() {
         return;
     }
 
-    // Agrupar facturas por cliente (insensible a mayúsculas)
     const grupos = {};
     bolsasFacturasPendientes.forEach(f => {
         const clave = f.cliente.trim().toLowerCase();
@@ -800,16 +1015,16 @@ function renderDeudoresBolsas() {
                 const orig = parseNum(f.total_original);
                 const pend = parseNum(f.saldo_pendiente);
                 const montoTexto = (pend < orig)
-                    ? `<b style="color:#facc15;">$${pend.toFixed(2)}</b> <small style="color:#94a3b8;">($${orig.toFixed(2)})</small>`
-                    : `<b style="color:#f87171;">$${pend.toFixed(2)}</b>`;
+                    ? `<b style="color:#facc15;">Resta: $${pend.toFixed(2)}</b> <small style="color:#94a3b8; display:block;">Total: $${orig.toFixed(2)}</small>`
+                    : `<b style="color:#f87171;">Total: $${pend.toFixed(2)}</b>`;
 
                 return `
                     <div class="factura-row">
                         <div>
-                            <span style="color:#38bdf8; font-weight:bold;">${fechaCorta}</span> · 
+                            <span style="color:#38bdf8; font-weight:bold;">📅 ${fechaCorta}</span> · 
                             <span style="color:#e2e8f0;">${escHtml(f.productos)}</span>
                         </div>
-                        <div style="white-space:nowrap;">${montoTexto}</div>
+                        <div style="white-space:nowrap; text-align:right;">${montoTexto}</div>
                     </div>
                 `;
             }).join('');
@@ -867,7 +1082,6 @@ window.confirmarAbonoBolsas = async function () {
     }
 
     try {
-        // Obtener facturas pendientes del cliente ordenadas de la más vieja a la más nueva (FIFO)
         const facturasCliente = bolsasFacturasPendientes
             .filter(f => f.cliente.trim().toLowerCase() === bAbonoClienteActual.trim().toLowerCase())
             .sort((a, b) => new Date(a.fecha) - new Date(b.fecha));
@@ -879,14 +1093,12 @@ window.confirmarAbonoBolsas = async function () {
 
             const saldoFac = parseNum(fac.saldo_pendiente);
             if (restanteAbono >= saldoFac) {
-                // Paga esta factura vieja por completo
                 restanteAbono = round2(restanteAbono - saldoFac);
                 await db.from('bolsas_facturas').update({
                     saldo_pendiente: 0,
                     pagada: true
                 }).eq('id', fac.id);
             } else {
-                // Abona parcialmente a esta factura y queda el resto pendiente
                 const nuevoSaldoFac = round2(saldoFac - restanteAbono);
                 restanteAbono = 0;
                 await db.from('bolsas_facturas').update({
@@ -896,7 +1108,6 @@ window.confirmarAbonoBolsas = async function () {
             }
         }
 
-        // Registrar historial del abono (con Bs referencial)
         await db.from('bolsas_abonos').insert([{
             cliente: bAbonoClienteActual,
             monto_usd: abonoUsd,
@@ -904,7 +1115,6 @@ window.confirmarAbonoBolsas = async function () {
             nota_ref: notaRef || null
         }]);
 
-        // Sumar los dólares abonados a Caja
         const { data: caja } = await db.from('bolsas_caja').select('saldo').eq('id', 1).single();
         const saldoActual = caja ? parseNum(caja.saldo) : 0;
         await db.from('bolsas_caja').update({ saldo: round2(saldoActual + abonoUsd) }).eq('id', 1);
