@@ -5,10 +5,17 @@
 let bolsasInventario = [];
 let bolsasCarrito = [];
 let bolsasProveedores = [];
+let bolsasPorCobrarExterno = [];
 let bolsasFacturasPendientes = [];
 let bolsasTodasFacturas = [];
 let bolsasTodosMovimientos = [];
 let bolsasCortesHistorial = [];
+let bolsasClientesEspeciales = [];
+
+let saldoCajaActualBolsas = 0;
+let tasaUsdtActual = 1090;
+let tasaBcvActual = 922;
+let tarifaActivaBolsas = 'NORMAL'; // 'NORMAL' | 'ESPECIAL'
 let vistaGananciasActual = 'cierre'; // 'cierre' | 'semanal' | 'mensual'
 let bAbonoClienteActual = '';
 let bAbonoMaxActual = 0;
@@ -32,10 +39,13 @@ window.mostrarPanelBolsas = function (panelId) {
 };
 
 window.cargarTodoBolsas = async function () {
+    await cargarConfigCajaBolsas();
     await Promise.all([
         cargarInventarioBolsas(),
+        cargarPorCobrarExterno(),
         cargarProveedoresBolsas(),
-        cargarDeudoresBolsas()
+        cargarDeudoresBolsas(),
+        cargarClientesEspeciales()
     ]);
     recalcularCapitalBolsas();
     await cargarCortesInventario();
@@ -62,6 +72,32 @@ function round2(n) {
     return Math.round((n + Number.EPSILON) * 100) / 100;
 }
 
+function formatearMillaresYPaquetes(cantMillares) {
+    const m = round2(cantMillares);
+    const paq = Math.round(m * 10);
+    if (m === 1) return `1 millar (10 paq.)`;
+    if (m === 0.5) return `½ millar (5 paq.)`;
+    if (m < 1) return `${m} millar (${paq} paq.)`;
+    return `${m} millares (${paq} paq.)`;
+}
+
+async function cargarConfigCajaBolsas() {
+    try {
+        const { data: caja } = await db.from('bolsas_caja').select('*').eq('id', 1).single();
+        if (caja) {
+            saldoCajaActualBolsas = parseNum(caja.saldo);
+            tasaUsdtActual = parseNum(caja.tasa_usdt) || 1090;
+            tasaBcvActual = parseNum(caja.tasa_bcv) || 922;
+            const elUsdt = document.getElementById('b-tasa-usdt');
+            const elBcv = document.getElementById('b-tasa-bcv');
+            if (elUsdt) elUsdt.value = tasaUsdtActual;
+            if (elBcv) elBcv.value = tasaBcvActual;
+        }
+    } catch (e) {
+        console.error('Error cargando tasas:', e);
+    }
+}
+
 // =========================================================
 // 2. DASHBOARD SEMANAL, MOVIMIENTOS Y GANANCIAS
 // =========================================================
@@ -84,26 +120,16 @@ window.cambiarVistaGanancias = function (vista) {
 
 async function cargarDashboardBolsas() {
     try {
-        // 1. Saldo en Caja
-        const { data: caja } = await db.from('bolsas_caja').select('saldo').eq('id', 1).single();
-        const saldoCaja = caja ? parseNum(caja.saldo) : 0;
-        document.getElementById('b-dash-caja').innerText = saldoCaja.toFixed(2);
+        document.getElementById('b-dash-caja').innerText = saldoCajaActualBolsas.toFixed(2);
 
-        // 2. Cargar histórico de facturas y movimientos para métricas semanales, mensuales y de ganancias
-        const { data: facturasData } = await db
-            .from('bolsas_facturas')
-            .select('*')
-            .order('fecha', { ascending: false });
-
-        const { data: movsData } = await db
-            .from('bolsas_movimientos')
-            .select('*')
-            .order('fecha', { ascending: false });
+        const [{ data: facturasData }, { data: movsData }] = await Promise.all([
+            db.from('bolsas_facturas').select('*').order('fecha', { ascending: false }),
+            db.from('bolsas_movimientos').select('*').order('fecha', { ascending: false })
+        ]);
 
         bolsasTodasFacturas = facturasData || [];
         bolsasTodosMovimientos = movsData || [];
 
-        // 3. Resumen últimos 7 días
         const hace7Dias = new Date();
         hace7Dias.setDate(hace7Dias.getDate() - 7);
 
@@ -128,10 +154,8 @@ async function cargarDashboardBolsas() {
         document.getElementById('b-sem-compras').innerText = totalComprasSem.toFixed(2);
         document.getElementById('b-sem-gastos').innerText = totalGastosSem.toFixed(2);
 
-        // 4. Renderizar bloque de Ganancias (En curso, Cierres, Semanal, Mensual)
         renderGananciasDashboard();
 
-        // 5. Lista reciente de movimientos (últimos 25)
         const cont = document.getElementById('b-lista-movimientos');
         cont.innerHTML = '';
         const ultMovs = bolsasTodosMovimientos.slice(0, 25);
@@ -164,7 +188,6 @@ async function cargarDashboardBolsas() {
 }
 
 function renderGananciasDashboard() {
-    // Calcular ganancia acumulada desde el último corte (en curso)
     const ultimoCorte = bolsasCortesHistorial.length > 0 ? bolsasCortesHistorial[0] : null;
     const fechaCorte = ultimoCorte ? new Date(ultimoCorte.fecha) : new Date(0);
 
@@ -193,10 +216,9 @@ function renderGananciasDashboard() {
     if (!cont) return;
     cont.innerHTML = '';
 
-    // VISTA 1: POR CIERRE DE INVENTARIO
     if (vistaGananciasActual === 'cierre') {
         if (bolsasCortesHistorial.length === 0) {
-            cont.innerHTML = '<p style="color:#94a3b8; font-size:0.9rem;">Aún no has guardado cortes de inventario. Usa el botón "📸 Guardar Corte de Hoy" en Inventario para cerrar período.</p>';
+            cont.innerHTML = '<p style="color:#94a3b8; font-size:0.9rem;">Aún no has guardado cortes de inventario. Usa "📸 Guardar Corte de Hoy" en Inventario para cerrar período.</p>';
             return;
         }
 
@@ -225,10 +247,8 @@ function renderGananciasDashboard() {
         return;
     }
 
-    // VISTA 2: HISTÓRICO SEMANAL (Lunes a Domingo)
     if (vistaGananciasActual === 'semanal') {
         const semanas = {};
-
         const getClaveSemana = (fechaIso) => {
             const d = new Date(fechaIso);
             const day = d.getDay();
@@ -269,7 +289,7 @@ function renderGananciasDashboard() {
                 <div class="historial-item" style="border-left-color: ${neta >= 0 ? '#4ade80' : '#f87171'}; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">
                     <div>
                         <strong style="color:#fff;">📆 Semana ${s.label}</strong><br>
-                        <small style="color:#94a3b8;">Vendido: $${s.ventas.toFixed(2)} | Gan. Ventas: $${s.ganBruta.toFixed(2)} | Gastos: -$${s.gastos.toFixed(2)}</small>
+                        <small style="color:#94a3b8;">Vendido (BCV): $${s.ventas.toFixed(2)} | Gan. Ventas: $${s.ganBruta.toFixed(2)} | Gastos: -$${s.gastos.toFixed(2)}</small>
                     </div>
                     <div style="text-align:right;">
                         <small style="color:#94a3b8; display:block;">Ganancia Neta</small>
@@ -281,7 +301,6 @@ function renderGananciasDashboard() {
         return;
     }
 
-    // VISTA 3: HISTÓRICO MENSUAL
     if (vistaGananciasActual === 'mensual') {
         const meses = {};
         const nombresMes = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
@@ -320,7 +339,7 @@ function renderGananciasDashboard() {
                 <div class="historial-item" style="border-left-color: ${neta >= 0 ? '#4ade80' : '#f87171'}; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">
                     <div>
                         <strong style="color:#facc15;">🗓️ ${m.label}</strong><br>
-                        <small style="color:#94a3b8;">Vendido: $${m.ventas.toFixed(2)} | Gan. Ventas: $${m.ganBruta.toFixed(2)} | Gastos: -$${m.gastos.toFixed(2)}</small>
+                        <small style="color:#94a3b8;">Vendido (BCV): $${m.ventas.toFixed(2)} | Gan. Ventas: $${m.ganBruta.toFixed(2)} | Gastos: -$${m.gastos.toFixed(2)}</small>
                     </div>
                     <div style="text-align:right;">
                         <small style="color:#94a3b8; display:block;">Ganancia Neta</small>
@@ -354,11 +373,7 @@ window.registrarMovimientoBolsas = async function () {
         const nuevoSaldo = round2(saldoActual - monto);
         await db.from('bolsas_caja').update({ saldo: nuevoSaldo }).eq('id', 1);
 
-        await db.from('bolsas_movimientos').insert([{
-            tipo,
-            concepto,
-            monto
-        }]);
+        await db.from('bolsas_movimientos').insert([{ tipo, concepto, monto }]);
 
         if (tipo === 'PAGO_PROVEEDOR') {
             const { data: prov } = await db
@@ -384,8 +399,50 @@ window.registrarMovimientoBolsas = async function () {
 };
 
 // =========================================================
-// 3. PUNTO DE VENTA BOLSAS (CONGELANDO GANANCIA POR VENTA)
+// 3. PUNTO DE VENTA (ORDEN EXCEL + MILLAR / 1/2 / PAQUETE)
 // =========================================================
+function obtenerPrecioProductoSegunTarifa(prod) {
+    if (tarifaActivaBolsas === 'ESPECIAL') {
+        const esp = parseNum(prod.precio_especial);
+        return esp > 0 ? esp : parseNum(prod.precio_venta);
+    }
+    return parseNum(prod.precio_venta);
+}
+
+window.cambiarTarifaBolsas = function (tarifa) {
+    tarifaActivaBolsas = tarifa;
+
+    const btnNorm = document.getElementById('btn-tarifa-normal');
+    const btnEsp = document.getElementById('btn-tarifa-especial');
+
+    if (btnNorm && btnEsp) {
+        btnNorm.style.background = (tarifa === 'NORMAL') ? '#38bdf8' : '#334155';
+        btnNorm.style.color = (tarifa === 'NORMAL') ? '#0f172a' : '#f8fafc';
+        btnEsp.style.background = (tarifa === 'ESPECIAL') ? '#facc15' : '#334155';
+        btnEsp.style.color = (tarifa === 'ESPECIAL') ? '#0f172a' : '#f8fafc';
+    }
+
+    bolsasCarrito.forEach(item => {
+        const prod = bolsasInventario.find(p => p.id === item.id);
+        if (prod) {
+            item.precio = obtenerPrecioProductoSegunTarifa(prod);
+        }
+    });
+
+    filtrarCatalogoBolsas();
+    renderCarritoBolsas();
+};
+
+window.verificarClienteEspecialAuto = function (nombreEscrito) {
+    const limpio = (nombreEscrito || '').trim().toLowerCase();
+    if (!limpio) return;
+
+    const esEspecial = bolsasClientesEspeciales.some(c => c.nombre.trim().toLowerCase() === limpio);
+    if (esEspecial && tarifaActivaBolsas !== 'ESPECIAL') {
+        cambiarTarifaBolsas('ESPECIAL');
+    }
+};
+
 function renderCatalogoBolsas(lista) {
     const cont = document.getElementById('b-pos-catalogo');
     if (!cont) return;
@@ -398,14 +455,27 @@ function renderCatalogoBolsas(lista) {
         return;
     }
 
+    const colorPrecio = (tarifaActivaBolsas === 'ESPECIAL') ? '#facc15' : '#4ade80';
+    let categoriaActual = '';
+
     disponibles.forEach(p => {
+        const cat = p.categoria || 'GENERAL';
+        if (cat !== categoriaActual) {
+            categoriaActual = cat;
+            const divCat = document.createElement('div');
+            divCat.className = 'pos-cat-divider';
+            divCat.innerText = cat;
+            cont.appendChild(divCat);
+        }
+
+        const precioMostrar = obtenerPrecioProductoSegunTarifa(p);
         const tile = document.createElement('div');
         tile.className = 'prod-tile';
         tile.innerHTML = `
             <div class="p-name">${escHtml(p.nombre)}</div>
             <div>
-                <div class="p-price">$${parseNum(p.precio_venta).toFixed(2)}</div>
-                <div class="p-stock">Hay: ${parseNum(p.cantidad)}</div>
+                <div class="p-price" style="color:${colorPrecio};">$${precioMostrar.toFixed(2)}</div>
+                <div class="p-stock">Hay: ${parseNum(p.cantidad)} M</div>
             </div>
         `;
         tile.onclick = () => agregarAlCarritoBolsas(p.id);
@@ -425,27 +495,31 @@ function agregarAlCarritoBolsas(id) {
 
     const stockMax = parseNum(prod.cantidad);
     const existente = bolsasCarrito.find(item => item.id === id);
+    const precioActual = obtenerPrecioProductoSegunTarifa(prod);
 
     if (existente) {
-        if (existente.cantidad + 1 > stockMax) {
-            return alert(`Solo quedan ${stockMax} de "${prod.nombre}".`);
+        const paso = (existente.cantidad + 1 <= stockMax) ? 1 : 0.1;
+        if (round2(existente.cantidad + paso) > stockMax) {
+            return alert(`Solo quedan ${stockMax} millares de "${prod.nombre}".`);
         }
-        existente.cantidad = round2(existente.cantidad + 1);
+        existente.cantidad = round2(existente.cantidad + paso);
+        existente.precio = precioActual;
     } else {
         if (stockMax <= 0) return alert('Producto agotado.');
+        const inicial = stockMax >= 1 ? 1 : (stockMax >= 0.5 ? 0.5 : stockMax);
         bolsasCarrito.push({
             id: prod.id,
             nombre: prod.nombre,
-            precio: parseNum(prod.precio_venta),
+            precio: precioActual,
             costo: parseNum(prod.costo),
             stock: stockMax,
-            cantidad: stockMax >= 1 ? 1 : stockMax
+            cantidad: inicial
         });
     }
     renderCarritoBolsas();
 }
 
-window.cambiarCantBolsas = function (index, delta) {
+window.sumarUnidadBolsas = function (index, delta) {
     const item = bolsasCarrito[index];
     if (!item) return;
 
@@ -453,7 +527,7 @@ window.cambiarCantBolsas = function (index, delta) {
     if (nueva <= 0) {
         bolsasCarrito.splice(index, 1);
     } else if (nueva > item.stock) {
-        return alert(`Solo hay ${item.stock} disponibles.`);
+        return alert(`Solo hay ${item.stock} millares disponibles de ${item.nombre}.`);
     } else {
         item.cantidad = nueva;
     }
@@ -464,11 +538,11 @@ window.editarCantManualBolsas = function (index, valor) {
     const item = bolsasCarrito[index];
     if (!item) return;
 
-    const nueva = parseNum(valor);
+    const nueva = round2(parseNum(valor));
     if (nueva <= 0) {
         bolsasCarrito.splice(index, 1);
     } else if (nueva > item.stock) {
-        alert(`Solo hay ${item.stock} disponibles.`);
+        alert(`Solo hay ${item.stock} millares disponibles.`);
         item.cantidad = item.stock;
     } else {
         item.cantidad = nueva;
@@ -492,17 +566,25 @@ function renderCarritoBolsas() {
     bolsasCarrito.forEach((item, idx) => {
         const sub = round2(item.precio * item.cantidad);
         total = round2(total + sub);
+        const equivTexto = formatearMillaresYPaquetes(item.cantidad);
 
         cont.innerHTML += `
             <div class="cart-row">
-                <div style="flex:1;">
-                    <strong style="color:#38bdf8; font-size:1.02rem;">${escHtml(item.nombre)}</strong><br>
-                    <small style="color:#94a3b8;">$${item.precio.toFixed(2)} c/u → <b style="color:#4ade80;">$${sub.toFixed(2)}</b></small>
+                <div class="cart-row-top">
+                    <div>
+                        <strong style="color:#38bdf8; font-size:1rem;">${escHtml(item.nombre)}</strong>
+                        <small style="display:block; color:#94a3b8;">${equivTexto} × $${item.precio.toFixed(2)}</small>
+                    </div>
+                    <strong style="color:#4ade80; font-size:1.15rem;">$${sub.toFixed(2)}</strong>
                 </div>
-                <div class="qty-ctrl">
-                    <button class="qty-btn" onclick="cambiarCantBolsas(${idx}, -1)">−</button>
-                    <input type="number" step="0.5" value="${item.cantidad}" onchange="editarCantManualBolsas(${idx}, this.value)" style="width:62px; text-align:center; margin-bottom:0; padding:6px; font-weight:bold;">
-                    <button class="qty-btn" onclick="cambiarCantBolsas(${idx}, 1)">+</button>
+                <div class="cart-row-controls">
+                    <div class="qty-pill-group">
+                        <button class="qty-pill qty-pill-minus" onclick="sumarUnidadBolsas(${idx}, -0.1)" title="Restar 1 paquete">−Paq</button>
+                        <button class="qty-pill" onclick="sumarUnidadBolsas(${idx}, 0.1)" title="Sumar 1 paquete (+0.1)">+1 Paq</button>
+                        <button class="qty-pill" onclick="sumarUnidadBolsas(${idx}, 0.5)" title="Sumar medio millar (+0.5)">+½ M</button>
+                        <button class="qty-pill" onclick="sumarUnidadBolsas(${idx}, 1)" title="Sumar 1 millar (+1.0)">+1 M</button>
+                    </div>
+                    <input type="number" step="0.1" value="${item.cantidad}" onchange="editarCantManualBolsas(${idx}, this.value)" style="width:64px; text-align:center; margin-bottom:0; padding:6px; font-weight:bold; font-size:0.95rem;">
                 </div>
             </div>
         `;
@@ -534,17 +616,22 @@ window.procesarVentaBolsas = async function () {
     }
     if (!cliente) cliente = 'Cliente General';
 
-    let totalVenta = 0;
-    let totalGanancia = 0;
+    let totalVentaBcv = 0;
+    let totalGananciaUsdt = 0;
     const resumenProductos = [];
+    const ratioBcvAUsdt = (tasaUsdtActual > 0) ? (tasaBcvActual / tasaUsdtActual) : 1;
 
     try {
         for (const item of bolsasCarrito) {
-            const sub = round2(item.precio * item.cantidad);
-            const costoSub = round2(item.costo * item.cantidad);
-            totalVenta = round2(totalVenta + sub);
-            totalGanancia = round2(totalGanancia + (sub - costoSub));
-            resumenProductos.push(`${item.cantidad}x ${item.nombre}`);
+            const subBcv = round2(item.precio * item.cantidad);
+            const ventaEquivUsdt = subBcv * ratioBcvAUsdt;
+            const costoSubUsdt = item.costo * item.cantidad;
+
+            totalVentaBcv = round2(totalVentaBcv + subBcv);
+            totalGananciaUsdt = round2(totalGananciaUsdt + (ventaEquivUsdt - costoSubUsdt));
+
+            const paq = Math.round(item.cantidad * 10);
+            resumenProductos.push(`${item.cantidad}M (${paq}p) ${item.nombre}`);
 
             const { data: prodActual } = await db
                 .from('bolsas_inventario')
@@ -562,13 +649,14 @@ window.procesarVentaBolsas = async function () {
         }
 
         const esCredito = (metodo === 'CREDITO');
+        const etiquetaTarifa = (tarifaActivaBolsas === 'ESPECIAL') ? ' [Esp.]' : '';
 
         await db.from('bolsas_facturas').insert([{
             cliente,
-            productos: resumenProductos.join(', '),
-            total_original: totalVenta,
-            saldo_pendiente: esCredito ? totalVenta : 0,
-            ganancia: totalGanancia,
+            productos: resumenProductos.join(', ') + etiquetaTarifa,
+            total_original: totalVentaBcv,
+            saldo_pendiente: esCredito ? totalVentaBcv : 0,
+            ganancia: totalGananciaUsdt,
             metodo_pago: metodo,
             monto_bs_ref: bsRef,
             nota_ref: notaRef || null,
@@ -578,16 +666,16 @@ window.procesarVentaBolsas = async function () {
         if (!esCredito) {
             const { data: caja } = await db.from('bolsas_caja').select('saldo').eq('id', 1).single();
             const saldoActual = caja ? parseNum(caja.saldo) : 0;
-            await db.from('bolsas_caja').update({ saldo: round2(saldoActual + totalVenta) }).eq('id', 1);
+            await db.from('bolsas_caja').update({ saldo: round2(saldoActual + totalVentaBcv) }).eq('id', 1);
         }
 
         alert(esCredito
-            ? `✅ Factura a crédito cargada a ${cliente} por $${totalVenta.toFixed(2)}.`
-            : `✅ Venta cobrada por $${totalVenta.toFixed(2)} y sumada a Caja.`
+            ? `✅ Factura a crédito cargada a ${cliente} por $${totalVentaBcv.toFixed(2)}.`
+            : `✅ Venta cobrada por $${totalVentaBcv.toFixed(2)} y sumada a Caja.`
         );
 
         bolsasCarrito = [];
-        renderCarritoBolsas();
+        cambiarTarifaBolsas('NORMAL');
         document.getElementById('b-pos-cliente').value = '';
         document.getElementById('b-pos-bs').value = '';
         document.getElementById('b-pos-nota').value = '';
@@ -599,11 +687,56 @@ window.procesarVentaBolsas = async function () {
 };
 
 // =========================================================
-// 4. INVENTARIO EDITABLE + CAPITAL + CORTES HISTÓRICOS
+// 4. INVENTARIO (ORDEN EXCEL) + POR COBRAR + POR PAGAR
 // =========================================================
+window.actualizarTasasYPrecios = async function () {
+    const nuevaUsdt = parseNum(document.getElementById('b-tasa-usdt').value);
+    const nuevaBcv = parseNum(document.getElementById('b-tasa-bcv').value);
+
+    if (nuevaUsdt <= 0 || nuevaBcv <= 0) {
+        return alert('Ingresa tasas válidas mayores a 0.');
+    }
+
+    if (!confirm(`¿Actualizar tasas a USDT=${nuevaUsdt} / BCV=${nuevaBcv} y recalcular todos los precios de venta (Normal ×2 y Especial ×1.65)?`)) {
+        return;
+    }
+
+    try {
+        await db.from('bolsas_caja').update({
+            tasa_usdt: nuevaUsdt,
+            tasa_bcv: nuevaBcv
+        }).eq('id', 1);
+
+        const ratio = nuevaUsdt / nuevaBcv;
+
+        for (const p of bolsasInventario) {
+            const costoUsdt = parseNum(p.costo);
+            const costoBcv = costoUsdt * ratio;
+            const nuevoNormal = round2(costoBcv * 2);
+            const nuevoEspecial = round2(costoBcv * 1.65);
+
+            await db.from('bolsas_inventario').update({
+                precio_venta: nuevoNormal,
+                precio_especial: nuevoEspecial,
+                updated_at: new Date().toISOString()
+            }).eq('id', p.id);
+        }
+
+        alert('✅ Tasas y precios actualizados correctamente.');
+        await cargarTodoBolsas();
+    } catch (e) {
+        alert('Error actualizando tasas: ' + e.message);
+    }
+};
+
 async function cargarInventarioBolsas() {
     try {
-        const { data } = await db.from('bolsas_inventario').select('*').order('nombre');
+        const { data } = await db
+            .from('bolsas_inventario')
+            .select('*')
+            .order('orden', { ascending: true })
+            .order('nombre', { ascending: true });
+
         bolsasInventario = data || [];
         renderTablaInventarioBolsas();
         renderCatalogoBolsas(bolsasInventario);
@@ -618,13 +751,25 @@ function renderTablaInventarioBolsas() {
     tbody.innerHTML = '';
 
     if (bolsasInventario.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="6" style="text-align:center; color:#94a3b8; padding:16px;">No hay productos. Presiona "+ Nuevo Producto".</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="7" style="text-align:center; color:#94a3b8; padding:16px;">No hay productos. Presiona "+ Producto".</td></tr>';
         return;
     }
 
+    let catActual = '';
+
     bolsasInventario.forEach(p => {
+        const cat = p.categoria || 'GENERAL';
+        if (cat !== catActual) {
+            catActual = cat;
+            const trCat = document.createElement('tr');
+            trCat.className = 'inv-cat-row';
+            trCat.innerHTML = `<td colspan="7">${escHtml(cat)}</td>`;
+            tbody.appendChild(trCat);
+        }
+
         const costo = parseNum(p.costo);
         const venta = parseNum(p.precio_venta);
+        const especial = parseNum(p.precio_especial);
         const cant = parseNum(p.cantidad);
         const total = round2(costo * cant);
 
@@ -634,11 +779,12 @@ function renderTablaInventarioBolsas() {
             <td><input type="text" class="inv-edit-nombre" value="${escHtml(p.nombre)}"></td>
             <td><input type="number" step="0.01" class="inv-edit-costo" value="${costo}" oninput="recalcularFilaInventario(this)"></td>
             <td><input type="number" step="0.01" class="inv-edit-venta" value="${venta}"></td>
-            <td><input type="number" step="0.5" class="inv-edit-cant" value="${cant}" oninput="recalcularFilaInventario(this)"></td>
+            <td><input type="number" step="0.01" class="inv-edit-especial" value="${especial}"></td>
+            <td><input type="number" step="0.1" class="inv-edit-cant" value="${cant}" oninput="recalcularFilaInventario(this)"></td>
             <td><strong class="inv-row-total" style="color:#38bdf8;">$${total.toFixed(2)}</strong></td>
             <td style="white-space:nowrap;">
-                <button onclick="guardarFilaInventario('${p.id}', this)" style="background:#4ade80; color:#0f172a; padding:8px 10px; margin-right:4px;" title="Guardar cambios">💾</button>
-                <button onclick="eliminarFilaInventario('${p.id}', '${escHtml(p.nombre)}')" style="background:#ef4444; color:#fff; padding:8px 10px;" title="Eliminar">🗑️</button>
+                <button onclick="guardarFilaInventario('${p.id}', this)" style="background:#4ade80; color:#0f172a; padding:7px 9px; margin-right:3px;" title="Guardar">💾</button>
+                <button onclick="eliminarFilaInventario('${p.id}', '${escHtml(p.nombre)}')" style="background:#ef4444; color:#fff; padding:7px 9px;" title="Eliminar">🗑️</button>
             </td>
         `;
         tbody.appendChild(tr);
@@ -659,15 +805,24 @@ window.agregarFilaInventarioBolsas = async function () {
     const nombre = prompt('Nombre de la bolsa / producto:');
     if (!nombre || !nombre.trim()) return;
 
-    const costo = parseNum(prompt('Costo de compra ($):', '0'));
-    const venta = parseNum(prompt('Precio de venta ($):', '0'));
-    const cantidad = parseNum(prompt('Cantidad en existencia:', '0'));
+    const costo = parseNum(prompt('Costo por millar en USDT ($):', '0'));
+    const ratio = (tasaBcvActual > 0) ? (tasaUsdtActual / tasaBcvActual) : 1;
+    const ventaSugerida = round2(costo * ratio * 2);
+    const espSugerida = round2(costo * ratio * 1.65);
+
+    const venta = parseNum(prompt('Precio Normal por millar BCV ($):', ventaSugerida.toFixed(2)));
+    const especial = parseNum(prompt('Precio Especial por millar BCV ($):', espSugerida.toFixed(2)));
+    const cantidad = parseNum(prompt('Existencia en millares (ej. 10.5):', '0'));
+    const maxOrden = bolsasInventario.reduce((m, p) => Math.max(m, parseInt(p.orden) || 0), 0);
 
     try {
         await db.from('bolsas_inventario').insert([{
+            orden: maxOrden + 1,
+            categoria: '🧹 ASEO, PAPEL Y VARIOS',
             nombre: nombre.trim(),
             costo,
             precio_venta: venta,
+            precio_especial: especial,
             cantidad
         }]);
         await cargarTodoBolsas();
@@ -681,6 +836,7 @@ window.guardarFilaInventario = async function (id, btnEl) {
     const nombre = tr.querySelector('.inv-edit-nombre').value.trim();
     const costo = parseNum(tr.querySelector('.inv-edit-costo').value);
     const precio_venta = parseNum(tr.querySelector('.inv-edit-venta').value);
+    const precio_especial = parseNum(tr.querySelector('.inv-edit-especial').value);
     const cantidad = parseNum(tr.querySelector('.inv-edit-cant').value);
 
     if (!nombre) return alert('El nombre no puede quedar vacío.');
@@ -690,6 +846,7 @@ window.guardarFilaInventario = async function (id, btnEl) {
             nombre,
             costo,
             precio_venta,
+            precio_especial,
             cantidad,
             updated_at: new Date().toISOString()
         }).eq('id', id);
@@ -712,7 +869,82 @@ window.eliminarFilaInventario = async function (id, nombre) {
     }
 };
 
-// Proveedores ("Debo")
+// Cuadro POR COBRAR externo (Franelas, Tinas, etc.)
+async function cargarPorCobrarExterno() {
+    try {
+        const { data } = await db.from('bolsas_por_cobrar').select('*').order('concepto');
+        bolsasPorCobrarExterno = data || [];
+        renderPorCobrarExterno();
+    } catch (e) {
+        console.error('Error cargando por cobrar externo:', e);
+    }
+}
+
+function renderPorCobrarExterno() {
+    const cont = document.getElementById('b-lista-por-cobrar');
+    if (!cont) return;
+    cont.innerHTML = '';
+
+    bolsasPorCobrarExterno.forEach(item => {
+        const monto = parseNum(item.monto);
+        cont.innerHTML += `
+            <div class="side-ledger-row">
+                <div>
+                    <strong style="color:#fff;">${escHtml(item.concepto)}</strong>
+                </div>
+                <div style="display:flex; align-items:center; gap:6px;">
+                    <b style="color:#4ade80;">$${monto.toFixed(2)}</b>
+                    <button onclick="editarPorCobrarExterno('${item.id}', '${escHtml(item.concepto)}', ${monto})" style="background:#334155; color:#fff; padding:5px 8px; font-size:0.82rem;">✏️</button>
+                    <button onclick="eliminarPorCobrarExterno('${item.id}')" style="background:#ef4444; color:#fff; padding:5px 8px; font-size:0.82rem;">✕</button>
+                </div>
+            </div>
+        `;
+    });
+}
+
+window.agregarPorCobrarExterno = async function () {
+    const concepto = document.getElementById('b-pc-concepto').value.trim();
+    const monto = parseNum(document.getElementById('b-pc-monto').value);
+
+    if (!concepto || monto < 0) return alert('Escribe el concepto y el monto.');
+
+    try {
+        await db.from('bolsas_por_cobrar').insert([{ concepto, monto }]);
+        document.getElementById('b-pc-concepto').value = '';
+        document.getElementById('b-pc-monto').value = '';
+        await cargarTodoBolsas();
+    } catch (e) {
+        alert('Error agregando cuenta por cobrar: ' + e.message);
+    }
+};
+
+window.editarPorCobrarExterno = async function (id, concepto, montoActual) {
+    const nuevoVal = prompt(`Actualizar monto por cobrar (${concepto}):`, montoActual.toFixed(2));
+    if (nuevoVal === null) return;
+    const nuevoMonto = Math.max(0, parseNum(nuevoVal));
+
+    try {
+        await db.from('bolsas_por_cobrar').update({
+            monto: nuevoMonto,
+            updated_at: new Date().toISOString()
+        }).eq('id', id);
+        await cargarTodoBolsas();
+    } catch (e) {
+        alert('Error actualizando monto: ' + e.message);
+    }
+};
+
+window.eliminarPorCobrarExterno = async function (id) {
+    if (!confirm('¿Eliminar esta cuenta por cobrar externa?')) return;
+    try {
+        await db.from('bolsas_por_cobrar').delete().eq('id', id);
+        await cargarTodoBolsas();
+    } catch (e) {
+        alert('Error eliminando cuenta: ' + e.message);
+    }
+};
+
+// Cuadro POR PAGAR (Proveedores)
 async function cargarProveedoresBolsas() {
     try {
         const { data } = await db.from('bolsas_proveedores').select('*').order('nombre');
@@ -729,21 +961,21 @@ function renderProveedoresBolsas() {
     cont.innerHTML = '';
 
     if (bolsasProveedores.length === 0) {
-        cont.innerHTML = '<p style="color:#94a3b8; font-size:0.9rem;">No tienes deudas registradas con proveedores.</p>';
+        cont.innerHTML = '<p style="color:#94a3b8; font-size:0.88rem;">Sin cuentas por pagar.</p>';
         return;
     }
 
     bolsasProveedores.forEach(p => {
         const deuda = parseNum(p.deuda);
         cont.innerHTML += `
-            <div class="historial-item" style="border-left-color:#f87171; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">
+            <div class="side-ledger-row">
                 <div>
-                    <strong style="color:#fff;">${escHtml(p.nombre)}</strong><br>
-                    <small style="color:#f87171; font-size:0.95rem;">Debo: <b>$${deuda.toFixed(2)}</b></small>
+                    <strong style="color:#fff;">${escHtml(p.nombre)}</strong>
                 </div>
-                <div style="display:flex; gap:6px;">
-                    <button onclick="editarDeudaProveedor('${p.id}', '${escHtml(p.nombre)}', ${deuda})" style="background:#334155; color:#fff; padding:8px 12px;">✏️ Editar</button>
-                    <button onclick="eliminarProveedorBolsas('${p.id}', '${escHtml(p.nombre)}')" style="background:#ef4444; color:#fff; padding:8px 10px;">🗑️</button>
+                <div style="display:flex; align-items:center; gap:6px;">
+                    <b style="color:#f87171;">$${deuda.toFixed(2)}</b>
+                    <button onclick="editarDeudaProveedor('${p.id}', '${escHtml(p.nombre)}', ${deuda})" style="background:#334155; color:#fff; padding:5px 8px; font-size:0.82rem;">✏️</button>
+                    <button onclick="eliminarProveedorBolsas('${p.id}', '${escHtml(p.nombre)}')" style="background:#ef4444; color:#fff; padding:5px 8px; font-size:0.82rem;">✕</button>
                 </div>
             </div>
         `;
@@ -792,7 +1024,7 @@ window.editarDeudaProveedor = async function (id, nombre, deudaActual) {
 };
 
 window.eliminarProveedorBolsas = async function (id, nombre) {
-    if (!confirm(`¿Eliminar al proveedor "${nombre}" de la lista?`)) return;
+    if (!confirm(`¿Eliminar al proveedor "${nombre}"?`)) return;
     try {
         await db.from('bolsas_proveedores').delete().eq('id', id);
         await cargarTodoBolsas();
@@ -801,6 +1033,56 @@ window.eliminarProveedorBolsas = async function (id, nombre) {
     }
 };
 
+// Clientes Especiales
+async function cargarClientesEspeciales() {
+    try {
+        const { data } = await db.from('bolsas_clientes_especiales').select('*').order('nombre');
+        bolsasClientesEspeciales = data || [];
+
+        const dl = document.getElementById('lista-clientes-especiales-dl');
+        const cont = document.getElementById('b-lista-clientes-especiales');
+        if (dl) dl.innerHTML = '';
+        if (cont) cont.innerHTML = '';
+
+        bolsasClientesEspeciales.forEach(c => {
+            if (dl) dl.innerHTML += `<option value="${escHtml(c.nombre)}">`;
+            if (cont) {
+                cont.innerHTML += `
+                    <span style="background:#0f172a; border:1px solid #facc15; color:#facc15; padding:5px 10px; border-radius:20px; display:inline-flex; align-items:center; gap:6px; font-size:0.85rem;">
+                        ⭐ ${escHtml(c.nombre)}
+                        <button onclick="eliminarClienteEspecial('${c.id}')" style="background:none; color:#f87171; padding:0; font-size:0.9rem;">✕</button>
+                    </span>
+                `;
+            }
+        });
+    } catch (e) {
+        console.error('Error cargando clientes especiales:', e);
+    }
+}
+
+window.agregarClienteEspecial = async function () {
+    const nombre = document.getElementById('b-esp-cliente-nombre').value.trim();
+    if (!nombre) return alert('Escribe el nombre del cliente.');
+
+    try {
+        await db.from('bolsas_clientes_especiales').insert([{ nombre }]);
+        document.getElementById('b-esp-cliente-nombre').value = '';
+        await cargarClientesEspeciales();
+    } catch (e) {
+        alert('Error agregando cliente especial: ' + e.message);
+    }
+};
+
+window.eliminarClienteEspecial = async function (id) {
+    try {
+        await db.from('bolsas_clientes_especiales').delete().eq('id', id);
+        await cargarClientesEspeciales();
+    } catch (e) {
+        alert('Error eliminando cliente especial: ' + e.message);
+    }
+};
+
+// Cálculo de Capital Total (Inventario + Caja + Por Cobrar - Por Pagar)
 function recalcularCapitalBolsas(desdeInputs = false) {
     let totalInv = 0;
 
@@ -816,27 +1098,42 @@ function recalcularCapitalBolsas(desdeInputs = false) {
         });
     }
 
-    let totalMeDeben = 0;
+    let totalFacturasClientes = 0;
     bolsasFacturasPendientes.forEach(f => {
-        totalMeDeben = round2(totalMeDeben + parseNum(f.saldo_pendiente));
+        totalFacturasClientes = round2(totalFacturasClientes + parseNum(f.saldo_pendiente));
     });
 
-    let totalDebo = 0;
+    let totalExternos = 0;
+    bolsasPorCobrarExterno.forEach(pc => {
+        totalExternos = round2(totalExternos + parseNum(pc.monto));
+    });
+
+    const totalPorCobrar = round2(totalFacturasClientes + totalExternos);
+
+    let totalPorPagar = 0;
     bolsasProveedores.forEach(pr => {
-        totalDebo = round2(totalDebo + parseNum(pr.deuda));
+        totalPorPagar = round2(totalPorPagar + parseNum(pr.deuda));
     });
 
-    const capital = round2(totalInv + totalMeDeben - totalDebo);
+    const capital = round2(totalInv + saldoCajaActualBolsas + totalPorCobrar - totalPorPagar);
 
     document.getElementById('b-cap-inv').innerText = totalInv.toFixed(2);
-    document.getElementById('b-cap-medeben').innerText = totalMeDeben.toFixed(2);
-    document.getElementById('b-cap-debo').innerText = totalDebo.toFixed(2);
+    document.getElementById('b-cap-caja').innerText = saldoCajaActualBolsas.toFixed(2);
+    document.getElementById('b-cap-medeben').innerText = totalPorCobrar.toFixed(2);
+    document.getElementById('b-cap-debo').innerText = totalPorPagar.toFixed(2);
     document.getElementById('b-cap-total').innerText = capital.toFixed(2);
 
-    return { totalInv, totalMeDeben, totalDebo, capital };
+    const elFacClientes = document.getElementById('b-facturas-clientes-total');
+    const elBoxPcTotal = document.getElementById('b-box-porcobrar-total');
+    const elBoxPpTotal = document.getElementById('b-box-porpagar-total');
+
+    if (elFacClientes) elFacClientes.innerText = totalFacturasClientes.toFixed(2);
+    if (elBoxPcTotal) elBoxPcTotal.innerText = totalPorCobrar.toFixed(2);
+    if (elBoxPpTotal) elBoxPpTotal.innerText = totalPorPagar.toFixed(2);
+
+    return { totalInv, totalMeDeben: totalPorCobrar, totalDebo: totalPorPagar, capital };
 }
 
-// Guardar Corte de Inventario y calcular Ganancia del Cierre
 window.guardarCorteInventario = async function () {
     if (!confirm('¿Guardar una copia histórica del inventario y calcular la ganancia de este cierre?')) return;
 
@@ -849,16 +1146,18 @@ window.guardarCorteInventario = async function () {
             const nombre = tr.querySelector('.inv-edit-nombre').value.trim();
             const costo = parseNum(tr.querySelector('.inv-edit-costo').value);
             const precio_venta = parseNum(tr.querySelector('.inv-edit-venta').value);
+            const precio_especial = parseNum(tr.querySelector('.inv-edit-especial').value);
             const cantidad = parseNum(tr.querySelector('.inv-edit-cant').value);
 
             await db.from('bolsas_inventario').update({
-                nombre, costo, precio_venta, cantidad, updated_at: new Date().toISOString()
+                nombre, costo, precio_venta, precio_especial, cantidad, updated_at: new Date().toISOString()
             }).eq('id', id);
 
             detalleSnapshot.push({
                 nombre,
                 costo,
                 precio_venta,
+                precio_especial,
                 cantidad,
                 total: round2(costo * cantidad)
             });
@@ -867,7 +1166,6 @@ window.guardarCorteInventario = async function () {
         await cargarInventarioBolsas();
         const { totalInv, totalMeDeben, totalDebo, capital } = recalcularCapitalBolsas(false);
 
-        // Calcular ganancia operativa desde el corte anterior
         const { data: ultimoCorte } = await db
             .from('bolsas_inventario_historial')
             .select('fecha, capital_total')
@@ -936,7 +1234,7 @@ async function cargarCortesInventario() {
 
             let filasHtml = items.map(it => `
                 <div class="factura-row">
-                    <span>${escHtml(it.nombre)} (${it.cantidad} × $${parseNum(it.costo).toFixed(2)})</span>
+                    <span>${escHtml(it.nombre)} (${it.cantidad}M × $${parseNum(it.costo).toFixed(2)})</span>
                     <b style="color:#38bdf8;">$${parseNum(it.total).toFixed(2)}</b>
                 </div>
             `).join('');
@@ -946,7 +1244,7 @@ async function cargarCortesInventario() {
                     <div class="deudor-header" onclick="document.getElementById('corte-body-${idx}').classList.toggle('open')">
                         <div>
                             <strong style="color:#38bdf8;">📅 ${fechaStr}</strong><br>
-                            <small style="color:#94a3b8;">Inv: $${parseNum(corte.total_inventario).toFixed(2)} | Me deben: $${parseNum(corte.total_me_deben).toFixed(2)} | Debo: $${parseNum(corte.total_debo).toFixed(2)}</small>
+                            <small style="color:#94a3b8;">Inv: $${parseNum(corte.total_inventario).toFixed(2)} | Por cobrar: $${parseNum(corte.total_me_deben).toFixed(2)} | Por pagar: $${parseNum(corte.total_debo).toFixed(2)}</small>
                         </div>
                         <div style="text-align:right;">
                             <b style="color:#facc15; font-size:1.05rem; display:block;">Capital: $${parseNum(corte.capital_total).toFixed(2)}</b>
@@ -965,7 +1263,7 @@ async function cargarCortesInventario() {
 }
 
 // =========================================================
-// 5. DEUDORES BOLSAS (ACORDEÓN + ABONO FIFO)
+// 5. DEUDORES BOLSAS (SOLO FACTURAS A CLIENTES - FIFO)
 // =========================================================
 async function cargarDeudoresBolsas() {
     try {
