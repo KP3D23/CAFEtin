@@ -361,7 +361,8 @@ window.registrarMovimientoBolsas = async function () {
     }
 
     try {
-        const { data: caja } = await db.from('bolsas_caja').select('saldo').eq('id', 1).single();
+        const { data: caja, error: errCaja } = await db.from('bolsas_caja').select('saldo').eq('id', 1).single();
+        if (errCaja) throw errCaja;
         const saldoActual = caja ? parseNum(caja.saldo) : 0;
 
         if (monto > saldoActual) {
@@ -371,9 +372,11 @@ window.registrarMovimientoBolsas = async function () {
         }
 
         const nuevoSaldo = round2(saldoActual - monto);
-        await db.from('bolsas_caja').update({ saldo: nuevoSaldo }).eq('id', 1);
+        const { error: errUpd } = await db.from('bolsas_caja').update({ saldo: nuevoSaldo }).eq('id', 1);
+        if (errUpd) throw errUpd;
 
-        await db.from('bolsas_movimientos').insert([{ tipo, concepto, monto }]);
+        const { error: errMov } = await db.from('bolsas_movimientos').insert([{ tipo, concepto, monto }]);
+        if (errMov) throw errMov;
 
         if (tipo === 'PAGO_PROVEEDOR') {
             const { data: prov } = await db
@@ -651,7 +654,7 @@ window.procesarVentaBolsas = async function () {
         const esCredito = (metodo === 'CREDITO');
         const etiquetaTarifa = (tarifaActivaBolsas === 'ESPECIAL') ? ' [Esp.]' : '';
 
-        await db.from('bolsas_facturas').insert([{
+        const { error: errFac } = await db.from('bolsas_facturas').insert([{
             cliente,
             productos: resumenProductos.join(', ') + etiquetaTarifa,
             total_original: totalVentaBcv,
@@ -662,6 +665,7 @@ window.procesarVentaBolsas = async function () {
             nota_ref: notaRef || null,
             pagada: !esCredito
         }]);
+        if (errFac) throw errFac;
 
         if (!esCredito) {
             const { data: caja } = await db.from('bolsas_caja').select('saldo').eq('id', 1).single();
@@ -702,10 +706,11 @@ window.actualizarTasasYPrecios = async function () {
     }
 
     try {
-        await db.from('bolsas_caja').update({
+        const { error } = await db.from('bolsas_caja').update({
             tasa_usdt: nuevaUsdt,
             tasa_bcv: nuevaBcv
         }).eq('id', 1);
+        if (error) throw error;
 
         const ratio = nuevaUsdt / nuevaBcv;
 
@@ -816,7 +821,7 @@ window.agregarFilaInventarioBolsas = async function () {
     const maxOrden = bolsasInventario.reduce((m, p) => Math.max(m, parseInt(p.orden) || 0), 0);
 
     try {
-        await db.from('bolsas_inventario').insert([{
+        const { error } = await db.from('bolsas_inventario').insert([{
             orden: maxOrden + 1,
             categoria: '🧹 ASEO, PAPEL Y VARIOS',
             nombre: nombre.trim(),
@@ -825,6 +830,7 @@ window.agregarFilaInventarioBolsas = async function () {
             precio_especial: especial,
             cantidad
         }]);
+        if (error) throw error;
         await cargarTodoBolsas();
     } catch (e) {
         alert('Error agregando producto: ' + e.message);
@@ -842,7 +848,7 @@ window.guardarFilaInventario = async function (id, btnEl) {
     if (!nombre) return alert('El nombre no puede quedar vacío.');
 
     try {
-        await db.from('bolsas_inventario').update({
+        const { error } = await db.from('bolsas_inventario').update({
             nombre,
             costo,
             precio_venta,
@@ -850,6 +856,7 @@ window.guardarFilaInventario = async function (id, btnEl) {
             cantidad,
             updated_at: new Date().toISOString()
         }).eq('id', id);
+        if (error) throw error;
 
         btnEl.innerText = '✅';
         setTimeout(() => { btnEl.innerText = '💾'; }, 1200);
@@ -862,7 +869,8 @@ window.guardarFilaInventario = async function (id, btnEl) {
 window.eliminarFilaInventario = async function (id, nombre) {
     if (!confirm(`¿Eliminar "${nombre}" del inventario?`)) return;
     try {
-        await db.from('bolsas_inventario').delete().eq('id', id);
+        const { error } = await db.from('bolsas_inventario').delete().eq('id', id);
+        if (error) throw error;
         await cargarTodoBolsas();
     } catch (e) {
         alert('Error eliminando producto: ' + e.message);
@@ -872,11 +880,14 @@ window.eliminarFilaInventario = async function (id, nombre) {
 // Cuadro POR COBRAR externo (Franelas, Tinas, etc.)
 async function cargarPorCobrarExterno() {
     try {
-        const { data } = await db.from('bolsas_por_cobrar').select('*').order('concepto');
+        const { data, error } = await db.from('bolsas_por_cobrar').select('*').order('concepto');
+        if (error) throw error;
         bolsasPorCobrarExterno = data || [];
         renderPorCobrarExterno();
     } catch (e) {
-        console.error('Error cargando por cobrar externo:', e);
+        console.error('Error cargando por cobrar externo:', e.message);
+        bolsasPorCobrarExterno = [];
+        renderPorCobrarExterno();
     }
 }
 
@@ -904,12 +915,17 @@ function renderPorCobrarExterno() {
 
 window.agregarPorCobrarExterno = async function () {
     const concepto = document.getElementById('b-pc-concepto').value.trim();
-    const monto = parseNum(document.getElementById('b-pc-monto').value);
+    const montoRaw = document.getElementById('b-pc-monto').value;
+    const monto = parseNum(montoRaw);
 
-    if (!concepto || monto < 0) return alert('Escribe el concepto y el monto.');
+    if (!concepto || montoRaw === '' || monto < 0) {
+        return alert('Escribe el concepto y un monto válido.');
+    }
 
     try {
-        await db.from('bolsas_por_cobrar').insert([{ concepto, monto }]);
+        const { error } = await db.from('bolsas_por_cobrar').insert([{ concepto, monto }]);
+        if (error) throw error;
+
         document.getElementById('b-pc-concepto').value = '';
         document.getElementById('b-pc-monto').value = '';
         await cargarTodoBolsas();
@@ -924,10 +940,11 @@ window.editarPorCobrarExterno = async function (id, concepto, montoActual) {
     const nuevoMonto = Math.max(0, parseNum(nuevoVal));
 
     try {
-        await db.from('bolsas_por_cobrar').update({
+        const { error } = await db.from('bolsas_por_cobrar').update({
             monto: nuevoMonto,
             updated_at: new Date().toISOString()
         }).eq('id', id);
+        if (error) throw error;
         await cargarTodoBolsas();
     } catch (e) {
         alert('Error actualizando monto: ' + e.message);
@@ -937,7 +954,8 @@ window.editarPorCobrarExterno = async function (id, concepto, montoActual) {
 window.eliminarPorCobrarExterno = async function (id) {
     if (!confirm('¿Eliminar esta cuenta por cobrar externa?')) return;
     try {
-        await db.from('bolsas_por_cobrar').delete().eq('id', id);
+        const { error } = await db.from('bolsas_por_cobrar').delete().eq('id', id);
+        if (error) throw error;
         await cargarTodoBolsas();
     } catch (e) {
         alert('Error eliminando cuenta: ' + e.message);
@@ -947,11 +965,12 @@ window.eliminarPorCobrarExterno = async function (id) {
 // Cuadro POR PAGAR (Proveedores)
 async function cargarProveedoresBolsas() {
     try {
-        const { data } = await db.from('bolsas_proveedores').select('*').order('nombre');
+        const { data, error } = await db.from('bolsas_proveedores').select('*').order('nombre');
+        if (error) throw error;
         bolsasProveedores = data || [];
         renderProveedoresBolsas();
     } catch (e) {
-        console.error('Error cargando proveedores:', e);
+        console.error('Error cargando proveedores:', e.message);
     }
 }
 
@@ -984,19 +1003,22 @@ function renderProveedoresBolsas() {
 
 window.guardarProveedorBolsas = async function () {
     const nombre = document.getElementById('b-prov-nombre').value.trim();
-    const monto = parseNum(document.getElementById('b-prov-monto').value);
+    const montoRaw = document.getElementById('b-prov-monto').value;
+    const monto = parseNum(montoRaw);
 
-    if (!nombre || monto < 0) return alert('Escribe el nombre del proveedor y el monto.');
+    if (!nombre || montoRaw === '' || monto < 0) return alert('Escribe el nombre del proveedor y el monto.');
 
     try {
         const { data: ext } = await db.from('bolsas_proveedores').select('*').ilike('nombre', nombre).maybeSingle();
         if (ext) {
-            await db.from('bolsas_proveedores').update({
+            const { error } = await db.from('bolsas_proveedores').update({
                 deuda: round2(parseNum(ext.deuda) + monto),
                 updated_at: new Date().toISOString()
             }).eq('id', ext.id);
+            if (error) throw error;
         } else {
-            await db.from('bolsas_proveedores').insert([{ nombre, deuda: monto }]);
+            const { error } = await db.from('bolsas_proveedores').insert([{ nombre, deuda: monto }]);
+            if (error) throw error;
         }
 
         document.getElementById('b-prov-nombre').value = '';
@@ -1013,10 +1035,11 @@ window.editarDeudaProveedor = async function (id, nombre, deudaActual) {
     const nuevaDeuda = Math.max(0, parseNum(nuevoVal));
 
     try {
-        await db.from('bolsas_proveedores').update({
+        const { error } = await db.from('bolsas_proveedores').update({
             deuda: nuevaDeuda,
             updated_at: new Date().toISOString()
         }).eq('id', id);
+        if (error) throw error;
         await cargarTodoBolsas();
     } catch (e) {
         alert('Error actualizando proveedor: ' + e.message);
@@ -1026,7 +1049,8 @@ window.editarDeudaProveedor = async function (id, nombre, deudaActual) {
 window.eliminarProveedorBolsas = async function (id, nombre) {
     if (!confirm(`¿Eliminar al proveedor "${nombre}"?`)) return;
     try {
-        await db.from('bolsas_proveedores').delete().eq('id', id);
+        const { error } = await db.from('bolsas_proveedores').delete().eq('id', id);
+        if (error) throw error;
         await cargarTodoBolsas();
     } catch (e) {
         alert('Error eliminando proveedor: ' + e.message);
@@ -1065,7 +1089,8 @@ window.agregarClienteEspecial = async function () {
     if (!nombre) return alert('Escribe el nombre del cliente.');
 
     try {
-        await db.from('bolsas_clientes_especiales').insert([{ nombre }]);
+        const { error } = await db.from('bolsas_clientes_especiales').insert([{ nombre }]);
+        if (error) throw error;
         document.getElementById('b-esp-cliente-nombre').value = '';
         await cargarClientesEspeciales();
     } catch (e) {
@@ -1075,7 +1100,8 @@ window.agregarClienteEspecial = async function () {
 
 window.eliminarClienteEspecial = async function (id) {
     try {
-        await db.from('bolsas_clientes_especiales').delete().eq('id', id);
+        const { error } = await db.from('bolsas_clientes_especiales').delete().eq('id', id);
+        if (error) throw error;
         await cargarClientesEspeciales();
     } catch (e) {
         alert('Error eliminando cliente especial: ' + e.message);
@@ -1192,7 +1218,7 @@ window.guardarCorteInventario = async function () {
         const gananciaOperativa = round2(ganVentas - gastosTotal);
         const variacionCapital = ultimoCorte ? round2(capital - parseNum(ultimoCorte.capital_total)) : 0;
 
-        await db.from('bolsas_inventario_historial').insert([{
+        const { error: errCorte } = await db.from('bolsas_inventario_historial').insert([{
             total_inventario: totalInv,
             total_me_deben: totalMeDeben,
             total_debo: totalDebo,
@@ -1201,6 +1227,7 @@ window.guardarCorteInventario = async function () {
             variacion_capital: variacionCapital,
             detalle_json: detalleSnapshot
         }]);
+        if (errCorte) throw errCorte;
 
         alert(`✅ Corte guardado.\nGanancia neta del período: $${gananciaOperativa.toFixed(2)}`);
         await cargarTodoBolsas();
@@ -1406,12 +1433,13 @@ window.confirmarAbonoBolsas = async function () {
             }
         }
 
-        await db.from('bolsas_abonos').insert([{
+        const { error: errAb } = await db.from('bolsas_abonos').insert([{
             cliente: bAbonoClienteActual,
             monto_usd: abonoUsd,
             monto_bs_ref: abonoBsRef,
             nota_ref: notaRef || null
         }]);
+        if (errAb) throw errAb;
 
         const { data: caja } = await db.from('bolsas_caja').select('saldo').eq('id', 1).single();
         const saldoActual = caja ? parseNum(caja.saldo) : 0;
